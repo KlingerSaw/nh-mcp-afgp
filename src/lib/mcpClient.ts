@@ -78,6 +78,34 @@ export const mcpClient = {
     return response.json();
   },
 
+  async getPortals() {
+    const response = await fetch(`${MCP_BASE_URL}/portals`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  },
+
+  async getSiteSettings(portal: string) {
+    const response = await fetch(`${MCP_BASE_URL}/site-settings`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ portal }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+  },
+
   async healthCheck() {
     const response = await fetch(`${MCP_BASE_URL}/health`, {
       headers,
