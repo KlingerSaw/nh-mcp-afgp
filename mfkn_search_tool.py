@@ -8,6 +8,9 @@ class Tools:
     """
     mfknSearch – søgeværktøj til Miljø- og Fødevareklagenævnet (MFKN).
 
+    IMPORTANT: This tool now uses the MCP server which automatically logs all queries to the database.
+    Set self.mcp_url and self.mcp_headers with your Supabase credentials in __init__.
+
     Standard:
       mfknSearch(query="...", page=1)
 
@@ -24,12 +27,19 @@ class Tools:
         self.name = "mfknSearch"
         self.description = (
             "Søger i Miljø- og Fødevareklagenævnets afgørelsesportal "
-            "mfkn.naevneneshus.dk via /api/search. Understøtter lovområder, "
-            "§-henvisninger og fagord med boolsk søgning."
+            "mfkn.naevneneshus.dk via MCP server. Alle søgninger logges automatisk. "
+            "Understøtter lovområder, §-henvisninger og fagord med boolsk søgning."
         )
 
         self.base_url = "https://mfkn.naevneneshus.dk"
-        self.endpoint = f"{self.base_url}/api/search"
+
+        # MCP server endpoint (change these to your actual values)
+        self.mcp_url = "YOUR_SUPABASE_URL/functions/v1/naevneneshus-mcp"
+        self.mcp_headers = {
+            "Authorization": "Bearer YOUR_SUPABASE_ANON_KEY",
+            "Content-Type": "application/json"
+        }
+
         # MFKN UI defaulter til 10 resultater per side
         self.page_size = 10
         self.wildcard = "*"
@@ -476,9 +486,24 @@ class Tools:
 
         response_debug_data = None
 
-        # 6) kald API
+        # 6) kald MCP server (includes automatic logging)
         try:
-            resp = requests.post(self.endpoint, json=payload, timeout=30)
+            resp = requests.post(
+                f"{self.mcp_url}/search",
+                json={
+                    "portal": "mfkn.naevneneshus.dk",
+                    "query": built_query,
+                    "categories": categories,
+                    "sort": sort,
+                    "types": types_payload,
+                    "skip": skip,
+                    "size": size,
+                    "userIdentifier": "openwebui-python-tool",
+                    "originalQuery": query
+                },
+                headers=self.mcp_headers,
+                timeout=30
+            )
             resp.raise_for_status()
             data = resp.json()
             if self.debug and page == 1:
