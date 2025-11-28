@@ -170,11 +170,11 @@ print(response.text)`;
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">3.</span>
-            <span>Enter the Base URL from below in the URL field</span>
+            <span>Enter the OpenAPI Spec URL from below (the full URL including /openapi.json)</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">4.</span>
-            <span>For OpenAPI Spec, select "URL" and enter: <code className="bg-blue-800 px-2 py-1 rounded">openapi.json</code></span>
+            <span>For OpenAPI Spec dropdown, select "URL" (if available)</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">5.</span>
@@ -216,31 +216,10 @@ print(response.text)`;
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Base URL
+                OpenAPI Spec URL (Use This Full URL in OpenWebUI)
               </label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-gray-800">
-                  {mcpUrl}
-                </code>
-                <button
-                  onClick={() => copyToClipboard(mcpUrl, 'url')}
-                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                >
-                  {copied === 'url' ? (
-                    <Check className="w-5 h-5 text-green-600" />
-                  ) : (
-                    <Copy className="w-5 h-5" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                OpenAPI Spec URL
-              </label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-gray-800">
+                <code className="flex-1 px-4 py-2 bg-green-50 border-2 border-green-500 rounded-lg text-sm font-mono text-gray-800 font-semibold">
                   {mcpUrl}/openapi.json
                 </code>
                 <button
@@ -254,8 +233,11 @@ print(response.text)`;
                   )}
                 </button>
               </div>
-              <p className="mt-2 text-sm text-gray-500">
-                Enter "openapi.json" in Open WebUI (it will append to the base URL)
+              <p className="mt-2 text-sm font-semibold text-green-700">
+                ✓ Copy this FULL URL and paste it in the URL field in OpenWebUI
+              </p>
+              <p className="mt-1 text-sm text-red-600">
+                ✗ Do NOT enter just "openapi.json" - use the complete URL above
               </p>
             </div>
 
