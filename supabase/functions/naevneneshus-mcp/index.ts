@@ -43,6 +43,42 @@ const DEFAULT_PORTALS = [
   'pn.naevneneshus.dk',
 ];
 
+function parseQueryWithCategories(queryString: string): { cleanQuery: string; categoryTitles: string[] } {
+  const categoryRegex = /,?\s*kategori:\s*([^,]+)/gi;
+  const categoryTitles: string[] = [];
+  let match;
+
+  while ((match = categoryRegex.exec(queryString)) !== null) {
+    categoryTitles.push(match[1].trim());
+  }
+
+  const cleanQuery = queryString.replace(categoryRegex, '').trim();
+
+  return { cleanQuery, categoryTitles };
+}
+
+async function resolveCategoryIds(portal: string, categoryTitles: string[], supabase: any): Promise<CategoryFilter[]> {
+  if (categoryTitles.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from('site_categories')
+    .select('category_id, category_title')
+    .eq('portal', portal)
+    .in('category_title', categoryTitles);
+
+  if (error || !data) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+
+  return data.map((cat: any) => ({
+    id: cat.category_id,
+    title: cat.category_title,
+  }));
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -78,7 +114,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.0.5',
+          version: '1.0.7',
           endpoints: ['/mcp', '/search', '/feed', '/publication', '/health', '/openapi.json']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -132,10 +168,14 @@ async function handleMCP(req: Request, supabase: any) {
     );
   }
 
+  const { cleanQuery, categoryTitles } = parseQueryWithCategories(query);
+  const categories = await resolveCategoryIds(portal, categoryTitles, supabase);
+
   try {
     const apiUrl = `https://${portal}/api/Search`;
     const payload = {
-      query,
+      query: cleanQuery,
+      categories: categories.length > 0 ? categories : undefined,
       parameters: {},
       sort: 1,
       skip: (page - 1) * pageSize,
@@ -158,14 +198,14 @@ async function handleMCP(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query,
-      filters: { sort: 1 },
+      query: cleanQuery,
+      filters: { sort: 1, categories: categoryTitles },
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: 'mcp-client',
     });
 
-    const formattedResult = formatMCPResults(data, portal, query, executionTime);
+    const formattedResult = formatMCPResults(data, portal, cleanQuery, executionTime);
 
     return new Response(formattedResult, {
       headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' }
@@ -175,8 +215,8 @@ async function handleMCP(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query,
-      filters: { sort: 1 },
+      query: cleanQuery,
+      filters: { sort: 1, categories: categoryTitles },
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,
@@ -195,27 +235,27 @@ function formatMCPResults(data: any, portal: string, query: string, executionTim
   const publications = data.publications || [];
 
   if (total === 0) {
-    return `🔍 Ingen resultater fundet for "${query}" på ${portal}\n\n💡 Prøv:\n- Brug andre søgeord\n- Fjern datofiltre\n- Tjek stavning`;
+    return `\ud83d\udd0d Ingen resultater fundet for "${query}" p\u00e5 ${portal}\n\n\ud83d\udca1 Pr\u00f8v:\n- Brug andre s\u00f8geord\n- Fjern datofiltre\n- Tjek stavning`;
   }
 
   const lines: string[] = [
-    `📋 Fandt ${total} resultater for "${query}"`,
-    `🌐 Portal: ${portal}`,
-    `⏱️ Søgetid: ${executionTime}ms`,
+    `\ud83d\udccb Fandt ${total} resultater for "${query}"`,
+    `\ud83c\udf10 Portal: ${portal}`,
+    `\u23f1\ufe0f S\u00f8getid: ${executionTime}ms`,
     '',
   ];
 
   const categoryCounts = data.categoryCounts || [];
   if (categoryCounts.length > 0) {
-    lines.push('📊 Kategorier:');
+    lines.push('\ud83d\udcca Kategorier:');
     for (const cat of categoryCounts.slice(0, 5)) {
-      lines.push(`   • ${cat.category}: ${cat.count}`);
+      lines.push(`   \u2022 ${cat.category}: ${cat.count}`);
     }
     lines.push('');
   }
 
-  lines.push(`📄 Viser ${publications.length} resultater:`);
-  lines.push('─'.repeat(60));
+  lines.push(`\ud83d\udcc4 Viser ${publications.length} resultater:`);
+  lines.push('\u2500'.repeat(60));
 
   for (let i = 0; i < publications.length; i++) {
     const pub = publications[i];
@@ -232,22 +272,22 @@ function formatMCPResults(data: any, portal: string, query: string, executionTim
     lines.push(`${i + 1}. ${title}`);
 
     if (categories.length > 0) {
-      lines.push(`   📑 ${categories.join(', ')}`);
+      lines.push(`   \ud83d\udcd1 ${categories.join(', ')}`);
     }
 
     if (jnr.length > 0) {
-      lines.push(`   📋 Journal: ${jnr.join(', ')}`);
+      lines.push(`   \ud83d\udccb Journal: ${jnr.join(', ')}`);
     }
 
-    lines.push(`   📅 Dato: ${date}`);
-    lines.push(`   🔗 ${link}`);
+    lines.push(`   \ud83d\udcc5 Dato: ${date}`);
+    lines.push(`   \ud83d\udd17 ${link}`);
   }
 
   if (total > publications.length) {
     const nextPage = Math.floor((data.skip || 0) / (data.size || 10)) + 2;
     lines.push('');
-    lines.push('─'.repeat(60));
-    lines.push(`💡 Viser ${publications.length} af ${total} resultater. Brug page=${nextPage} for flere.`);
+    lines.push('\u2500'.repeat(60));
+    lines.push(`\ud83d\udca1 Viser ${publications.length} af ${total} resultater. Brug page=${nextPage} for flere.`);
   }
 
   return lines.join('\n');
@@ -466,9 +506,9 @@ function handleOpenAPISpec(req: Request) {
   const spec = {
     openapi: '3.0.0',
     info: {
-      title: 'Nævneneshus Search API',
-      version: '1.0.5',
-      description: 'Search Danish administrative rulings across multiple portals including Miljø- og Fødevareklagenævnet, Ankestyrelsen, Erhvervsklagenævnet, and Patientklagenævnet.',
+      title: 'N\u00e6vneneshus Search API',
+      version: '1.0.7',
+      description: 'Search Danish administrative rulings across multiple portals including Milj\u00f8- og F\u00f8devareklagen\u00e6vnet, Ankestyrelsen, Erhvervsklagen\u00e6vnet, and Patientklagen\u00e6vnet.',
     },
     servers: [
       {
@@ -622,7 +662,7 @@ function handleOpenAPISpec(req: Request) {
       '/portals': {
         get: {
           summary: 'List available portals',
-          description: 'Get list of all available Nævneneshus portals',
+          description: 'Get list of all available N\u00e6vneneshus portals',
           operationId: 'listPortals',
           responses: {
             '200': {
