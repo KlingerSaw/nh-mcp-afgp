@@ -214,6 +214,24 @@ Deno.serve(async (req: Request) => {
     } else if (path.endsWith('/openapi.json') && req.method === 'GET') {
       console.log(`[${requestId}] 📖 Routing to OpenAPI spec handler`);
       return handleOpenAPISpec(req);
+    } else if ((path === '/naevneneshus-mcp' || path === '/naevneneshus-mcp/') && req.method === 'GET') {
+      console.log(`[${requestId}] 🏠 Root endpoint accessed`);
+      return new Response(
+        JSON.stringify({
+          name: 'Nævneneshus Search API',
+          version: '1.4.0',
+          description: 'Søg i danske administrative afgørelser på tværs af flere portaler',
+          endpoints: {
+            root: { path: '/', method: 'GET', description: 'API information' },
+            openapi: { path: '/openapi.json', method: 'GET', description: 'OpenAPI 3.0 specification' },
+            health: { path: '/health', method: 'GET', description: 'Health check' },
+            portals: { path: '/portals', method: 'GET', description: 'List available portals' },
+            portalSearch: { path: '/mcp/{portal}', method: 'POST', description: 'Search specific portal' }
+          },
+          documentation: `${supabaseUrl}/functions/v1/naevneneshus-mcp/openapi.json`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
         JSON.stringify({
@@ -259,8 +277,8 @@ async function handleMCP(req: Request, supabase: any) {
     body = await req.json();
   } catch (error) {
     return new Response(
-      'Error: Invalid JSON in request body. Expected format: {"query": "your search", "portal": "mfkn.naevneneshus.dk"}',
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+      JSON.stringify({ error: 'Invalid JSON in request body', expected: { query: 'your search', portal: 'mfkn.naevneneshus.dk' } }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -268,8 +286,8 @@ async function handleMCP(req: Request, supabase: any) {
 
   if (!query) {
     return new Response(
-      'Error: "query" parameter is required. Example: {"query": "jordforurening"}',
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+      JSON.stringify({ error: 'query parameter is required', example: { query: 'jordforurening' } }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
@@ -319,10 +337,10 @@ async function handleMCP(req: Request, supabase: any) {
       user_identifier: 'openwebui',
     });
 
-    const formattedResult = formatMCPResults(data, portal, cleanQuery, executionTime);
+    const formattedResult = formatMCPResultsJSON(data, portal, cleanQuery, executionTime, page, pageSize);
 
-    return new Response(formattedResult, {
-      headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' }
+    return new Response(JSON.stringify(formattedResult), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   } catch (error) {
     const executionTime = Date.now() - startTime;
@@ -338,8 +356,8 @@ async function handleMCP(req: Request, supabase: any) {
     });
 
     return new Response(
-      `Error: ${error.message}`,
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+      JSON.stringify({ error: error.message, portal, query: cleanQuery }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 }
@@ -405,6 +423,68 @@ function formatMCPResults(data: any, portal: string, query: string, executionTim
   }
 
   return lines.join('\n');
+}
+
+function formatMCPResultsJSON(data: any, portal: string, query: string, executionTime: number, page: number, pageSize: number) {
+  const total = data.totalCount || 0;
+  const publications = data.publications || [];
+  const categoryCounts = data.categoryCounts || [];
+
+  if (total === 0) {
+    return {
+      success: true,
+      query,
+      portal,
+      totalCount: 0,
+      results: [],
+      executionTime,
+      message: 'Ingen resultater fundet',
+      suggestions: ['Brug andre søgeord', 'Fjern datofiltre', 'Tjek stavning']
+    };
+  }
+
+  const results = publications.map((pub: any) => {
+    const pubType = pub.type || 'ruling';
+    const link = `https://${portal}/${pubType === 'news' ? 'nyhed' : 'afgoerelse'}/${pub.id}`;
+
+    return {
+      id: pub.id,
+      title: pub.title || 'Uden titel',
+      date: pub.date || null,
+      categories: pub.categories || [],
+      journalNumbers: pub.jnr || [],
+      type: pubType,
+      link
+    };
+  });
+
+  const response: any = {
+    success: true,
+    query,
+    portal,
+    totalCount: total,
+    page,
+    pageSize,
+    results,
+    executionTime
+  };
+
+  if (categoryCounts.length > 0) {
+    response.categoryCounts = categoryCounts.slice(0, 5).map((cat: any) => ({
+      category: cat.category,
+      count: cat.count
+    }));
+  }
+
+  if (total > publications.length) {
+    response.pagination = {
+      hasMore: true,
+      nextPage: page + 1,
+      totalPages: Math.ceil(total / pageSize)
+    };
+  }
+
+  return response;
 }
 
 async function handleSearch(req: Request, supabase: any) {
@@ -796,33 +876,81 @@ async function handleOpenAPISpec(req: Request) {
           },
           responses: {
             '200': {
-              description: 'Søgning gennemført. Returnerer formateret tekst med søgeresultater, antal træffere og links til afgørelser.',
+              description: 'Søgning gennemført succesfuldt',
               content: {
-                'text/plain': {
+                'application/json': {
                   schema: {
-                    type: 'string',
-                    description: 'Formateret dansk tekst med søgeresultater inklusiv titel, dato, sammendrag og link til hver afgørelse.',
-                    example: '🔍 Fandt 42 resultater for "jordforurening" på mfkn.naevneneshus.dk\n\n📄 1. Afgørelse om jordforurening...\n📅 2024-03-15\n🔗 https://mfkn.naevneneshus.dk/...',
-                  },
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      query: { type: 'string', example: 'jordforurening' },
+                      portal: { type: 'string', example: 'mfkn.naevneneshus.dk' },
+                      totalCount: { type: 'integer', example: 42 },
+                      page: { type: 'integer', example: 1 },
+                      pageSize: { type: 'integer', example: 5 },
+                      results: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            title: { type: 'string' },
+                            date: { type: 'string', nullable: true },
+                            categories: { type: 'array', items: { type: 'string' } },
+                            journalNumbers: { type: 'array', items: { type: 'string' } },
+                            type: { type: 'string', enum: ['ruling', 'news'] },
+                            link: { type: 'string', format: 'uri' }
+                          }
+                        }
+                      },
+                      executionTime: { type: 'integer', description: 'Execution time in milliseconds' },
+                      categoryCounts: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            category: { type: 'string' },
+                            count: { type: 'integer' }
+                          }
+                        }
+                      },
+                      pagination: {
+                        type: 'object',
+                        properties: {
+                          hasMore: { type: 'boolean' },
+                          nextPage: { type: 'integer' },
+                          totalPages: { type: 'integer' }
+                        }
+                      }
+                    }
+                  }
                 },
               },
             },
             '400': {
-              description: 'Ugyldig forespørgsel - mangler påkrævet query parameter',
+              description: 'Ugyldig forespørgsel',
               content: {
-                'text/plain': {
+                'application/json': {
                   schema: {
-                    type: 'string',
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' }
+                    }
                   },
                 },
               },
             },
             '500': {
-              description: 'Serverfejl under søgning',
+              description: 'Serverfejl',
               content: {
-                'text/plain': {
+                'application/json': {
                   schema: {
-                    type: 'string',
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' },
+                      portal: { type: 'string' },
+                      query: { type: 'string' }
+                    }
                   },
                 },
               },
@@ -847,6 +975,52 @@ async function handleOpenAPISpec(req: Request) {
       },
     ],
     paths: {
+      '/': {
+        get: {
+          summary: 'API Information',
+          description: 'Get information about this API and available endpoints',
+          operationId: 'getApiInfo',
+          responses: {
+            '200': {
+              description: 'API information',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      version: { type: 'string' },
+                      description: { type: 'string' },
+                      endpoints: { type: 'object' },
+                      documentation: { type: 'string', format: 'uri' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/openapi.json': {
+        get: {
+          summary: 'Get OpenAPI Specification',
+          description: 'Returns the complete OpenAPI 3.0 specification for this API',
+          operationId: 'getOpenAPISpec',
+          responses: {
+            '200': {
+              description: 'OpenAPI 3.0 specification',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    description: 'OpenAPI 3.0 specification object'
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       ...paths,
       '/search': {
         post: {
@@ -1152,15 +1326,11 @@ async function handleOpenAPISpec(req: Request) {
         bearerAuth: {
           type: 'http',
           scheme: 'bearer',
-          description: 'Supabase anon key for authentication',
+          description: 'Optional Supabase anon key for authentication',
         },
       },
     },
-    security: [
-      {
-        bearerAuth: [],
-      },
-    ],
+    security: [],
   };
 
   const toolsCount = Object.keys(paths).filter(p => p.startsWith('/mcp/')).length;
