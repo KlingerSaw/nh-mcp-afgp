@@ -1032,7 +1032,7 @@ async function optimizeQuery(
   };
 }
 
-function handleOpenAPISpec(req: Request) {
+async function handleOpenAPISpec(req: Request) {
   console.log('');
   console.log('=' .repeat(53));
   console.log('🔍 OPENAPI SPEC REQUEST STARTED');
@@ -1073,16 +1073,7 @@ function handleOpenAPISpec(req: Request) {
     console.log('  - Header format:', authHeader.substring(0, 20) + '...');
   }
 
-  (async () => {
-    const headerObj: Record<string, string> = {};
-    req.headers.forEach((value, key) => {
-      if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('key')) {
-        headerObj[key] = value;
-      }
-    });
-
-    console.log('');
-
+  console.log('');
   console.log('📊 STEP 1: Fetching portals from database...');
   const { data: portals, error: portalsError } = await supabase
     .from('portal_metadata')
@@ -1617,7 +1608,6 @@ function handleOpenAPISpec(req: Request) {
   console.log(`  - Response size: ~${JSON.stringify(spec).length} bytes`);
   console.log('=' .repeat(53));
   console.log('');
-  })();
 
   return new Response(JSON.stringify(spec), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
