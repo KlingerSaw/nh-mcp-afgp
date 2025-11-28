@@ -385,11 +385,14 @@ class Tools:
             cleaned_tokens.append(t_clean)
             i += 1
 
-        # Domæneord kan lægges ind som ekstra OR-blok hvis ønsket.
-        # For nu holder vi query’en tæt på UI’et (kun brugerens rensede ord).
-        if cleaned_tokens:
-            return "(" + " AND ".join(cleaned_tokens) + ")"
-        return f"({user_query})"
+        base_query = "(" + " AND ".join(cleaned_tokens) + ")" if cleaned_tokens else f"({user_query})"
+
+        # Læg domæneord ind som OR-blok for at efterligne MFKN’s UI-boost
+        if domain_terms:
+            domain_block = "(" + " OR ".join(domain_terms) + ")"
+            return f"({base_query} AND {domain_block})"
+
+        return base_query
 
     def _format_debug(
         self,
