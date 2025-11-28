@@ -50,10 +50,10 @@ Deno.serve(async (req: Request) => {
         }
 
         const data = await response.json();
-        const categories = data.categories as Category[];
+        const categories = data.topics as Category[];
 
         if (!categories || !Array.isArray(categories)) {
-          console.error(`No categories found for ${portal}`);
+          console.error(`No topics found for ${portal}`);
           continue;
         }
 
