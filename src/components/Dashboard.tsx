@@ -70,11 +70,13 @@ export function Dashboard() {
       const { error } = await supabase
         .from('query_logs')
         .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000');
+        .gte('created_at', '1900-01-01');
 
       if (error) throw error;
 
-      await loadLogs();
+      setLogs([]);
+      setStats({ total: 0, emptyResults: 0, largeResults: 0, errors: 0 });
+      setSelectedLog(null);
     } catch (error) {
       console.error('Error deleting logs:', error);
       alert('Der opstod en fejl ved sletning af logs');
