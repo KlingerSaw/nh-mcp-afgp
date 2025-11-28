@@ -219,20 +219,30 @@ class Tools:
 
 ### Configuration Steps
 
-1. **Get your Supabase credentials** from the `.env` file in this project:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
+1. **Get your Supabase credentials** from the web interface:
+   - Navigate to the Search page (home page)
+   - At the top, you'll see the "Open WebUI Integration" section
+   - Copy the Edge Function URL and Authorization Token using the copy buttons
 
 2. **Update the tool code** with your credentials:
+   - Open the `openwebui_tool.py` file from this repository
+   - Replace `YOUR_SUPABASE_URL` with your Supabase project URL
+   - Replace `YOUR_SUPABASE_ANON_KEY` with your anon key
+
+   Example:
    ```python
-   self.mcp_url = "https://your-project.supabase.co/functions/v1/naevneneshus-mcp"
+   self.mcp_url = "https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp"
    self.headers = {
-       "Authorization": "Bearer your-anon-key",
+       "Authorization": "Bearer eyJhbGci...",
        "Content-Type": "application/json"
    }
    ```
 
-3. **Add the tool to OpenWebUI** by creating a new function tool with the code above.
+3. **Add the tool to OpenWebUI**:
+   - Go to OpenWebUI Settings → Functions
+   - Click "Create New Function"
+   - Paste the entire updated `openwebui_tool.py` code
+   - Save and enable the function
 
 ## Features
 

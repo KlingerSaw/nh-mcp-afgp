@@ -32,6 +32,7 @@ class Tools:
         )
 
         # TODO: Replace these with your actual Supabase credentials
+        # Get these from the web interface at the top of the Search page
         self.mcp_url = "https://YOUR_SUPABASE_URL/functions/v1/naevneneshus-mcp"
         self.headers = {
             "Authorization": "Bearer YOUR_SUPABASE_ANON_KEY",
@@ -186,10 +187,11 @@ class Tools:
 
         # Add pagination hint if there are more results
         if total > len(publications):
+            next_page = (data.get("skip", 0) // data.get("size", 10)) + 2
             lines.extend([
                 "",
                 "─" * 60,
-                f"💡 Showing {len(publications)} of {total} results. Use page={page+1} for more."
+                f"💡 Showing {len(publications)} of {total} results. Use page={next_page} for more."
             ])
 
         return "\n".join(lines)

@@ -311,12 +311,15 @@ export function SearchInterface() {
                 Setup Instructions
               </h3>
               <ol className="text-sm text-blue-50 space-y-1 list-decimal list-inside">
+                <li>Download the <code className="bg-black/20 px-1.5 py-0.5 rounded">openwebui_tool.py</code> file from the repository</li>
+                <li>Replace <code className="bg-black/20 px-1.5 py-0.5 rounded">YOUR_SUPABASE_URL</code> and <code className="bg-black/20 px-1.5 py-0.5 rounded">YOUR_SUPABASE_ANON_KEY</code> with values above</li>
                 <li>Go to Open WebUI Settings → Functions</li>
-                <li>Create a new external function</li>
-                <li>Paste the Edge Function URL above</li>
-                <li>Add the Authorization token as a Bearer token</li>
+                <li>Create new function and paste the updated Python code</li>
                 <li>Save and enable the function</li>
               </ol>
+              <p className="text-xs text-blue-100 mt-3">
+                💡 The tool uses endpoint: <code className="bg-black/20 px-1.5 py-0.5 rounded">{edgeFunctionUrl}/search</code>
+              </p>
             </div>
           </div>
         </div>
