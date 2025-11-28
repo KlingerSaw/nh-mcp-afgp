@@ -68,6 +68,14 @@ export function SearchInterface() {
         'om',
         'søgning',
         'praksis',
+        'mbl',
+        'nbl',
+        'pl',
+        'hdl',
+        'rl',
+        'jfl',
+        'vl',
+        'sl',
       ]),
     []
   );
@@ -101,6 +109,7 @@ export function SearchInterface() {
     const tokens = cleanedQuery.match(/"[^"]+"|[^\s]+/g) || [];
     const removedFillerWords: string[] = [];
     const processed: string[] = [];
+    const seen = new Set<string>();
 
     tokens.forEach((token) => {
       const normalized = token.replace(/^["']|["']$/g, '');
@@ -121,14 +130,21 @@ export function SearchInterface() {
         return;
       }
 
+      let processedToken: string;
+
       if (normalized === '§') {
-        processed.push(`"§"`);
+        processedToken = `"§"`;
       } else if (/^\d+$/.test(normalized)) {
-        processed.push(`"${normalized}"`);
+        processedToken = `"${normalized}"`;
       } else if (normalized.includes(' ')) {
-        processed.push(`"${normalized}"`);
+        processedToken = `"${normalized}"`;
       } else {
-        processed.push(normalized);
+        processedToken = normalized;
+      }
+
+      if (!seen.has(processedToken)) {
+        seen.add(processedToken);
+        processed.push(processedToken);
       }
     });
 
