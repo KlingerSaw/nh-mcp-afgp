@@ -90,14 +90,29 @@ async function handleSearch(req: Request, supabase: any) {
   try {
     // Build API request to the portal
     const apiUrl = `https://${portal}/api/Search`;
-    const payload = {
+    const { category, dateRange = {} } = filters;
+    const payload: Record<string, any> = {
       query,
-      filters,
-      pagination: {
-        page,
-        pageSize,
-      },
+      sort: 'Score',
+      types: [],
+      skip: (page - 1) * pageSize,
+      size: pageSize,
     };
+
+    if (category) {
+      payload.categories = [
+        {
+          title: category,
+        },
+      ];
+    }
+
+    if (dateRange.start || dateRange.end) {
+      payload.dateRange = {
+        ...(dateRange.start ? { start: dateRange.start } : {}),
+        ...(dateRange.end ? { end: dateRange.end } : {}),
+      };
+    }
 
     const response = await fetch(apiUrl, {
       method: 'POST',

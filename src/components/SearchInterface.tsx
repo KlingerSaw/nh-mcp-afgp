@@ -77,6 +77,11 @@ export function SearchInterface() {
         return;
       }
 
+      if (normalized.length < 3) {
+        removedFillerWords.push(normalized);
+        return;
+      }
+
       if (fillerWords.has(lower)) {
         removedFillerWords.push(normalized);
         return;
