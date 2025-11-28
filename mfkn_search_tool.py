@@ -30,7 +30,8 @@ class Tools:
 
         self.base_url = "https://mfkn.naevneneshus.dk"
         self.endpoint = f"{self.base_url}/api/search"
-        self.page_size = 5
+        # MFKN UI defaulter til 10 resultater per side
+        self.page_size = 10
         self.wildcard = "*"
 
         # ========= DEBUG =========
@@ -210,6 +211,17 @@ class Tools:
     # ============================================================
     # Hjælpefunktioner
     # ============================================================
+    def _extract_paragraph(self, token: str) -> Optional[str]:
+        """Fanger "§ 72"-henvisninger, også når tallet hænger på ordet."""
+
+        if not token:
+            return None
+
+        m = re.search(r"§?\s*(\d+[a-zA-Z]*)", token)
+        if m:
+            return m.group(1)
+        return None
+
     def _strip_html(self, html: Optional[str]) -> str:
         if not html:
             return ""
@@ -349,9 +361,8 @@ class Tools:
             # "§" + tal → "§ xx"
             if t_clean == "§" and i + 1 < len(tokens):
                 nxt = tokens[i + 1].strip(".,;:()")
-                m = re.match(r"(\d+[a-zA-Z]*)", nxt)
-                if m:
-                    parag = m.group(1)
+                parag = self._extract_paragraph(nxt)
+                if parag:
                     cleaned_tokens.append(f'"§ {parag}"')
                     i += 2
                     continue
@@ -362,9 +373,8 @@ class Tools:
 
             # token der indeholder § direkte
             if "§" in t_clean and t_clean != "§":
-                m = re.search(r"§\s*(\d+[a-zA-Z]*)", t_clean)
-                if m:
-                    parag = m.group(1)
+                parag = self._extract_paragraph(t_clean)
+                if parag:
                     cleaned_tokens.append(f'"§ {parag}"')
                 else:
                     cleaned_tokens.append(f'"{t_clean}"')
