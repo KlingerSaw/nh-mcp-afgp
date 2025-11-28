@@ -199,7 +199,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.1.0',
+          version: '1.3.0',
           endpoints: ['/mcp', '/search', '/feed', '/publication', '/health', '/openapi.json']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -594,10 +594,9 @@ async function handlePortals() {
 }
 
 async function handleOpenAPISpec(req: Request) {
-  const url = new URL(req.url);
-  const baseUrl = `${url.protocol}//${url.host}${url.pathname.replace('/openapi.json', '')}`;
-
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
+
   const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -730,7 +729,7 @@ async function handleOpenAPISpec(req: Request) {
     openapi: '3.0.0',
     info: {
       title: 'Nævneneshus Search API - Portal-specifik',
-      version: '1.2.0',
+      version: '1.4.0',
       description: 'Søg i danske administrative afgørelser på tværs af flere portaler. Hvert portal har sit eget endpoint med optimeret søgning baseret på lovområder, kategorier og akronymer.',
     },
     servers: [
