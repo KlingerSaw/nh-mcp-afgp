@@ -9,9 +9,16 @@ const PORTALS = [
   'pn.naevneneshus.dk',
 ];
 
+const PAGE_SIZE_OPTIONS = [10, 20, 30];
+
 export function SearchInterface() {
   const [portal, setPortal] = useState(PORTALS[0]);
   const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,18 +26,33 @@ export function SearchInterface() {
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!query.trim()) return;
+    const cleanedQuery = query.replace(/\s+/g, ' ').trim();
+    if (!cleanedQuery) return;
 
     setLoading(true);
     setError(null);
     setResults(null);
 
     try {
+      const filters: NonNullable<SearchParams['filters']> = {};
+
+      if (category.trim()) {
+        filters.category = category.trim();
+      }
+
+      if (dateStart || dateEnd) {
+        filters.dateRange = {
+          ...(dateStart ? { start: dateStart } : {}),
+          ...(dateEnd ? { end: dateEnd } : {}),
+        };
+      }
+
       const params: SearchParams = {
         portal,
-        query: query.trim(),
+        query: cleanedQuery,
         page: 1,
-        pageSize: 10,
+        pageSize,
+        ...(Object.keys(filters).length > 0 ? { filters } : {}),
       };
 
       const data = await mcpClient.search(params);
@@ -87,7 +109,98 @@ export function SearchInterface() {
                 />
                 <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Tip: use quotes for exact phrases and AND/OR for Boolean boosting.
+              </p>
             </div>
+
+            <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+              <span className="text-sm font-medium text-gray-700">Advanced filters</span>
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((prev) => !prev)}
+                className="text-sm font-semibold text-blue-600 hover:text-blue-800"
+              >
+                {showAdvanced ? 'Hide options' : 'Show options'}
+              </button>
+            </div>
+
+            {showAdvanced && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                  <input
+                    type="text"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="e.g., Aktindsigt or Råstofloven"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Results per page</label>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  >
+                    {PAGE_SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size} results
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">From date</label>
+                  <input
+                    type="date"
+                    value={dateStart}
+                    onChange={(e) => setDateStart(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">To date</label>
+                  <input
+                    type="date"
+                    value={dateEnd}
+                    onChange={(e) => setDateEnd(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                </div>
+
+                {(dateStart || dateEnd || category) && (
+                  <div className="md:col-span-2 flex items-center justify-between bg-white border border-blue-100 rounded-lg px-4 py-3">
+                    <div className="text-sm text-gray-700">
+                      <p className="font-medium">Active filters</p>
+                      <p className="text-gray-600">
+                        {category && <span className="mr-2">Category: {category}</span>}
+                        {(dateStart || dateEnd) && (
+                          <span>
+                            Date: {dateStart || 'Any'} → {dateEnd || 'Any'}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategory('');
+                        setDateStart('');
+                        setDateEnd('');
+                      }}
+                      className="text-sm font-semibold text-blue-600 hover:text-blue-800"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="submit"
