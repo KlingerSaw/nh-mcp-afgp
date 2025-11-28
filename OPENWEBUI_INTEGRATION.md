@@ -36,6 +36,21 @@ Simply ask questions like:
 - "Find rulings about vindmoeller"
 - "What are the latest publications?"
 
+## Troubleshooting: OpenWebUI Shows "Connected" But No Tools
+
+If OpenWebUI says the external tool is connected but **0 tools** appear, work through these checks:
+
+1. **Spec requires a Bearer token** – Without it, OpenWebUI receives an empty/401 response and therefore generates no tools. In OpenWebUI set **Authentication Type: Bearer Token** and paste your anon key.
+2. **Verify the spec loads with your token** – From a terminal, confirm you get JSON back:
+   ```bash
+   curl -H "Authorization: Bearer <YOUR_ANON_KEY>" \
+     https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json | head
+   ```
+   If this returns HTML or an auth error, the key is wrong or missing in OpenWebUI.
+3. **Remove and re-import the tool** – Some OpenWebUI versions cache failed imports. Delete the entry, re-add with the exact URL (no spaces), and include the token.
+4. **Check OpenWebUI version** – External OpenAPI tools require **v0.3.x or newer**. Upgrade if you are on an older build.
+5. **Look at browser network logs** – In OpenWebUI DevTools, the request to `/openapi.json` should return `200` with JSON. A `401/403` means the token is not being sent.
+
 ## API Endpoint
 
 The API is deployed as a Supabase Edge Function:
