@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { mcpClient, SearchParams, CategoryFilter } from '../lib/mcpClient';
 import { Search, Loader2, ExternalLink } from 'lucide-react';
 import { resolveCategoryFromQuery, removeMatchedAliasFromQuery, ResolvedCategory } from '../lib/categoryResolver';
+import { exportOpenAPISpec } from '../lib/openApiExport';
 
 const DEFAULT_PORTALS = [
   { value: 'fkn.naevneneshus.dk', label: 'Forbrugerklagenævnet' },
@@ -226,6 +227,12 @@ export function SearchInterface() {
   }
 
   async function exportOpenWebUITool() {
+    const baseUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/naevneneshus-mcp`;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    exportOpenAPISpec(baseUrl, anonKey);
+  }
+
+  async function exportOldPythonTool() {
     const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/naevneneshus-mcp`;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -452,7 +459,7 @@ class Tools:
             <div className="flex-1">
               <h2 className="text-2xl font-bold mb-2">Open WebUI Integration</h2>
               <p className="text-blue-50 mb-4">
-                Export a ready-to-use Python tool file with your credentials pre-configured.
+                Export an OpenAPI spec to connect Open WebUI directly to the search API.
               </p>
               <div className="bg-blue-500/30 rounded-lg p-4 text-sm">
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
@@ -460,11 +467,11 @@ class Tools:
                   Setup Instructions
                 </h3>
                 <ol className="text-blue-50 space-y-1 list-decimal list-inside">
-                  <li>Click the "Export Tool" button to download the pre-configured Python file</li>
-                  <li>Go to Open WebUI Settings → Functions</li>
-                  <li>Click "Create New Function"</li>
-                  <li>Open the downloaded file and copy all contents</li>
-                  <li>Paste into Open WebUI and save</li>
+                  <li>Click "Export Tool" to download the OpenAPI JSON spec</li>
+                  <li>Go to Open WebUI Settings → External Tools</li>
+                  <li>Click "+" to add a new connection</li>
+                  <li>Click "Import" and select the downloaded JSON file</li>
+                  <li>Save - your API key is pre-configured in the spec</li>
                 </ol>
               </div>
             </div>
