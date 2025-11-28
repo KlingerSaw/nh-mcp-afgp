@@ -180,10 +180,8 @@ async function handleMCP(req: Request, supabase: any) {
     );
   }
 
-  // Step 1: Parse explicit "kategori:" patterns
   const { cleanQuery: queryAfterExplicitCategories, categoryTitles: explicitCategories } = parseQueryWithCategories(query);
 
-  // Step 2: Try to resolve category from query aliases (fuzzy matching)
   let workingQuery = queryAfterExplicitCategories;
   const categories: CategoryFilter[] = [];
   const allCategoryTitles: string[] = [...explicitCategories];
@@ -197,7 +195,6 @@ async function handleMCP(req: Request, supabase: any) {
     workingQuery = removeMatchedAliasFromQuery(workingQuery, aliasMatch.matchedAlias);
   }
 
-  // Also resolve explicit categories
   if (explicitCategories.length > 0) {
     const explicitCats = await resolveCategoryIds(portal, explicitCategories, supabase);
     categories.push(...explicitCats);
@@ -209,14 +206,12 @@ async function handleMCP(req: Request, supabase: any) {
   console.log('All category titles:', allCategoryTitles);
   console.log('Resolved categories:', categories);
 
-  // Step 3: Transform query (filler word removal, Elasticsearch syntax)
   const { transformedQuery, elasticsearchQuery, removedFillerWords } = transformQuery(workingQuery);
 
   console.log('Transformed query:', transformedQuery);
   console.log('Elasticsearch query:', elasticsearchQuery);
   console.log('Removed filler words:', removedFillerWords);
 
-  // Step 4: Optimize query (synonyms, acronyms)
   const { optimizedQuery, addedSynonyms, expandedAcronyms } = await optimizeQuery(
     elasticsearchQuery,
     portal,
@@ -818,11 +813,10 @@ async function handlePortals() {
   );
 }
 
-// Filler words that should be removed from queries
 const FILLER_WORDS = new Set([
   'og', 'eller', 'i', 'på', 'for', 'af', 'at', 'der', 'det', 'den', 'de',
   'en', 'et', 'som', 'med', 'til', 'the', 'a', 'an', 'ved', 'om',
-  'søgning', 'praksis', 'mbl', 'nbl', 'pl', 'hdl', 'rl', 'jfl', 'vl', 'sl'
+  'søgning', 'praksis', 'praksissøgning', 'efter', 'mbl', 'pl', 'hdl', 'rl', 'jfl', 'vl', 'sl'
 ]);
 
 function parseQueryWithCategories(query: string): { cleanQuery: string; categoryTitles: string[] } {
@@ -854,19 +848,16 @@ function transformQuery(rawQuery: string): {
     const normalized = token.replace(/^["']|["']$/g, '');
     const lower = normalized.toLowerCase();
 
-    // Remove boolean operators
     if (['and', '&&', 'og', 'eller', 'or'].includes(lower)) {
       removedFillerWords.push(normalized);
       return;
     }
 
-    // Remove filler words
     if (FILLER_WORDS.has(lower)) {
       removedFillerWords.push(normalized);
       return;
     }
 
-    // Remove patterns like "72-praksis"
     if (normalized.match(/^\d+-\w+$/)) {
       removedFillerWords.push(normalized);
       return;
@@ -874,7 +865,6 @@ function transformQuery(rawQuery: string): {
 
     let processedToken: string;
 
-    // Handle special characters and numbers
     if (normalized === '§') {
       processedToken = `"§"`;
     } else if (/^\d+$/.test(normalized)) {
@@ -885,14 +875,12 @@ function transformQuery(rawQuery: string): {
       processedToken = normalized;
     }
 
-    // Remove duplicates
     if (!seen.has(processedToken)) {
       seen.add(processedToken);
       processed.push(processedToken);
     }
   });
 
-  // Build Elasticsearch query with AND operators
   const elasticsearchParts: string[] = [];
   for (let i = 0; i < processed.length; i++) {
     if (i > 0) {
