@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, QueryLog } from '../lib/supabase';
-import { AlertTriangle, Activity, Clock, Search } from 'lucide-react';
+import { AlertTriangle, Clock } from 'lucide-react';
 
 export function Dashboard() {
   const [logs, setLogs] = useState<QueryLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<QueryLog | null>(null);
-  const [stats, setStats] = useState({
-    total: 0,
-    emptyResults: 0,
-    largeResults: 0,
-    errors: 0,
-  });
 
   useEffect(() => {
     loadLogs();
@@ -45,13 +39,6 @@ export function Dashboard() {
       if (error) throw error;
 
       setLogs(data || []);
-
-      const total = data?.length || 0;
-      const emptyResults = data?.filter(log => log.result_count === 0 && !log.error_message).length || 0;
-      const largeResults = data?.filter(log => log.result_count > 50).length || 0;
-      const errors = data?.filter(log => log.error_message).length || 0;
-
-      setStats({ total, emptyResults, largeResults, errors });
     } catch (error) {
       console.error('Error loading logs:', error);
     } finally {
@@ -110,35 +97,6 @@ export function Dashboard() {
           <p className="text-gray-600">Query logs from the last 14 days</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            icon={<Activity className="w-6 h-6" />}
-            label="Total Queries"
-            value={stats.total}
-            color="blue"
-          />
-          <StatCard
-            icon={<AlertTriangle className="w-6 h-6" />}
-            label="Empty Results"
-            value={stats.emptyResults}
-            color="yellow"
-            alert={stats.emptyResults > 0}
-          />
-          <StatCard
-            icon={<Search className="w-6 h-6" />}
-            label="Large Results (>50)"
-            value={stats.largeResults}
-            color="orange"
-            alert={stats.largeResults > 0}
-          />
-          <StatCard
-            icon={<AlertTriangle className="w-6 h-6" />}
-            label="Errors"
-            value={stats.errors}
-            color="red"
-            alert={stats.errors > 0}
-          />
-        </div>
 
         {alertLogs.length > 0 && (
           <div className="mb-8 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
@@ -307,31 +265,3 @@ export function Dashboard() {
   );
 }
 
-interface StatCardProps {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  color: 'blue' | 'yellow' | 'orange' | 'red';
-  alert?: boolean;
-}
-
-function StatCard({ icon, label, value, color, alert }: StatCardProps) {
-  const colorClasses = {
-    blue: 'bg-blue-100 text-blue-600',
-    yellow: 'bg-yellow-100 text-yellow-600',
-    orange: 'bg-orange-100 text-orange-600',
-    red: 'bg-red-100 text-red-600',
-  };
-
-  return (
-    <div className={`bg-white rounded-lg shadow-sm border p-6 ${alert ? 'ring-2 ring-yellow-400' : 'border-gray-200'}`}>
-      <div className={`inline-flex p-3 rounded-lg ${colorClasses[color]} mb-4`}>
-        {icon}
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-sm text-gray-600 mt-1">{label}</p>
-      </div>
-    </div>
-  );
-}
