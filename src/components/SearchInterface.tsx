@@ -133,9 +133,9 @@ export function SearchInterface() {
       let processedToken: string;
 
       if (normalized === '§') {
-        processedToken = `"§"`;
+        processedToken = '§';
       } else if (/^\d+$/.test(normalized)) {
-        processedToken = `"${normalized}"`;
+        processedToken = normalized;
       } else if (normalized.includes(' ')) {
         processedToken = `"${normalized}"`;
       } else {
