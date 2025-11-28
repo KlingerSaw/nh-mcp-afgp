@@ -337,6 +337,12 @@ class Tools:
 
         tokens = user_query.split()
         cleaned_tokens: List[str] = []
+        seen_tokens = set()
+
+        def add_token(token: str):
+            if token and token not in seen_tokens:
+                cleaned_tokens.append(token)
+                seen_tokens.add(token)
         i = 0
 
         while i < len(tokens):
@@ -363,11 +369,11 @@ class Tools:
                 nxt = tokens[i + 1].strip(".,;:()")
                 parag = self._extract_paragraph(nxt)
                 if parag:
-                    cleaned_tokens.append(f'"§ {parag}"')
+                    add_token(f"§ {parag}")
                     i += 2
                     continue
                 else:
-                    cleaned_tokens.append('"§"')
+                    add_token("§")
                     i += 1
                     continue
 
@@ -375,9 +381,9 @@ class Tools:
             if "§" in t_clean and t_clean != "§":
                 parag = self._extract_paragraph(t_clean)
                 if parag:
-                    cleaned_tokens.append(f'"§ {parag}"')
+                    add_token(f"§ {parag}")
                 else:
-                    cleaned_tokens.append(f'"{t_clean}"')
+                    add_token(t_clean)
                 i += 1
                 continue
 
@@ -388,14 +394,14 @@ class Tools:
 
             # sammensatte ord → citat
             if "-" in t_clean or "_" in t_clean:
-                cleaned_tokens.append(f'"{t_clean}"')
+                add_token(t_clean)
                 i += 1
                 continue
 
-            cleaned_tokens.append(t_clean)
+            add_token(t_clean)
             i += 1
 
-        base_query = "(" + " AND ".join(cleaned_tokens) + ")" if cleaned_tokens else f"({user_query})"
+        base_query = " ".join(cleaned_tokens) if cleaned_tokens else user_query
 
         # Læg domæneord ind som OR-blok for at efterligne MFKN’s UI-boost
         if domain_terms:
