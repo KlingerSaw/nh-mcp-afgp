@@ -133,9 +133,9 @@ export function SearchInterface() {
       let processedToken: string;
 
       if (normalized === '§') {
-        processedToken = '§';
+        processedToken = `"§"`;
       } else if (/^\d+$/.test(normalized)) {
-        processedToken = normalized;
+        processedToken = `"${normalized}"`;
       } else if (normalized.includes(' ')) {
         processedToken = `"${normalized}"`;
       } else {
@@ -206,7 +206,7 @@ export function SearchInterface() {
         portal,
         query: transformed.optimizedQuery,
         categories: categories.length > 0 ? categories : undefined,
-        sort: 'Date',
+        sort: 'Score',
         types: [],
         skip: 0,
         size: pageSize,
