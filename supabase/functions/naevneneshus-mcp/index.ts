@@ -42,12 +42,10 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const path = url.pathname;
 
-    // Initialize Supabase client for logging
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Route handling
     if (path.endsWith('/search') && req.method === 'POST') {
       return await handleSearch(req, supabase);
     } else if (path.endsWith('/feed') && req.method === 'POST') {
@@ -56,12 +54,25 @@ Deno.serve(async (req: Request) => {
       return await handlePublication(req, supabase);
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
-        JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }),
+        JSON.stringify({
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          version: '1.0.2',
+          endpoints: ['/search', '/feed', '/publication', '/health']
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
       return new Response(
-        JSON.stringify({ error: 'Not found' }),
+        JSON.stringify({
+          error: 'Not found',
+          availableEndpoints: [
+            { method: 'POST', path: '/search', description: 'Search publications' },
+            { method: 'POST', path: '/feed', description: 'Get latest publications' },
+            { method: 'POST', path: '/publication', description: 'Get specific publication' },
+            { method: 'GET', path: '/health', description: 'Health check' }
+          ]
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -76,8 +87,17 @@ Deno.serve(async (req: Request) => {
 
 async function handleSearch(req: Request, supabase: any) {
   const startTime = Date.now();
-  const body: SearchRequest = await req.json();
-  
+  let body: SearchRequest;
+
+  try {
+    body = await req.json();
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const { portal, query, page = 1, pageSize = 10, filters = {}, userIdentifier } = body;
 
   if (!portal || !query) {
@@ -88,31 +108,15 @@ async function handleSearch(req: Request, supabase: any) {
   }
 
   try {
-    // Build API request to the portal
     const apiUrl = `https://${portal}/api/Search`;
-    const { category, dateRange = {} } = filters;
-    const payload: Record<string, any> = {
+    const payload = {
       query,
-      sort: 'Score',
-      types: [],
-      skip: (page - 1) * pageSize,
-      size: pageSize,
+      filters,
+      pagination: {
+        page,
+        pageSize,
+      },
     };
-
-    if (category) {
-      payload.categories = [
-        {
-          title: category,
-        },
-      ];
-    }
-
-    if (dateRange.start || dateRange.end) {
-      payload.dateRange = {
-        ...(dateRange.start ? { start: dateRange.start } : {}),
-        ...(dateRange.end ? { end: dateRange.end } : {}),
-      };
-    }
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -128,7 +132,6 @@ async function handleSearch(req: Request, supabase: any) {
     const executionTime = Date.now() - startTime;
     const resultCount = data.totalCount || 0;
 
-    // Log to database
     await supabase.from('query_logs').insert({
       portal,
       query,
@@ -151,7 +154,6 @@ async function handleSearch(req: Request, supabase: any) {
   } catch (error) {
     const executionTime = Date.now() - startTime;
     
-    // Log error to database
     await supabase.from('query_logs').insert({
       portal,
       query,
@@ -170,7 +172,17 @@ async function handleSearch(req: Request, supabase: any) {
 }
 
 async function handleFeed(req: Request, supabase: any) {
-  const body: FeedRequest = await req.json();
+  let body: FeedRequest;
+
+  try {
+    body = await req.json();
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const { portal } = body;
 
   if (!portal) {
@@ -203,7 +215,17 @@ async function handleFeed(req: Request, supabase: any) {
 }
 
 async function handlePublication(req: Request, supabase: any) {
-  const body: PublicationRequest = await req.json();
+  let body: PublicationRequest;
+
+  try {
+    body = await req.json();
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   const { portal, id } = body;
 
   if (!portal || !id) {
