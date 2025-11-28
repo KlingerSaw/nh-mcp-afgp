@@ -12,18 +12,22 @@ From your `.env` file or Supabase dashboard, you need:
 - **Supabase URL**: `https://soavtttwnswalynemlxr.supabase.co`
 - **Anon Key**: Your `VITE_SUPABASE_ANON_KEY`
 
-### Step 2: Add to OpenWebUI
+### Step 2: Add to OpenWebUI External Tools
 
 1. Open OpenWebUI Settings
-2. Navigate to **External Tools** or **Manage Tool Servers**
-3. Click **Add Connection**
+2. Navigate to **External Tools** (or **Admin Settings → Tools → External Tools**)
+3. Click **Add External Tool** or **Import from URL**
 4. Configure:
-   - **URL**: `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp`
-   - **OpenAPI Spec**: Select "URL" and enter `openapi.json`
-   - **Auth**: Select "Bearer" and paste your anon key
-5. Click **Save**
+   - **OpenAPI Spec URL**: `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json`
+   - **Authentication Type**: Bearer Token
+   - **Token**: Your anon key from `.env` file
+5. Click **Save** or **Import**
 
-OpenWebUI will automatically discover all available tools from the OpenAPI specification.
+OpenWebUI will automatically discover **16+ tools** from the OpenAPI specification - one for each portal:
+- `search_mfkn_naevneneshus_dk` - Miljø- og Fødevareklagenævnet
+- `search_ekn_naevneneshus_dk` - Energiklagenævnet
+- `search_pkn_naevneneshus_dk` - Planklagenævnet
+- ... and 13 more portals
 
 ### Step 3: Use in Chat
 
@@ -122,9 +126,28 @@ Check if the server is running.
 - `pn.naevneneshus.dk` - Planklagenævnet
 - Any other `*.naevneneshus.dk` portal
 
-## OpenWebUI Tool Configuration
+## Tool Usage in OpenWebUI
 
-### Simple Python Tool for OpenWebUI
+Once connected, you'll have access to portal-specific search tools. Each tool is optimized for its specific portal with:
+- Pre-loaded categories and legal areas
+- Common acronyms automatically expanded
+- Portal-specific examples and descriptions
+
+### How to Use
+
+Simply ask questions in natural language:
+- "Find cases about noise pollution on MFKN"
+- "Search for wind turbine rulings on EKN"
+- "What are recent decisions about local plans on PKN"
+
+The AI will automatically:
+1. Select the correct portal tool
+2. Format your query appropriately
+3. Present results in a clear format with links
+
+## Advanced: Custom Python Tool (Optional)
+
+If you prefer to create a custom Python tool instead of using the OpenAPI integration, you can use this template:
 
 ```python
 import requests
@@ -132,7 +155,8 @@ from typing import Optional, Dict, List
 
 class Tools:
     """
-    Naevneneshus Search Tool - Simplified version using MCP server
+    Custom Naevneneshus Search Tool
+    Note: This is optional - the OpenAPI integration is recommended
     """
 
     def __init__(self):
@@ -252,12 +276,14 @@ class Tools:
         return "\\n".join(lines)
 ```
 
-### Configuration Steps
+### Custom Tool Configuration Steps (Optional)
 
-1. **Get your Supabase credentials** from the web interface:
-   - Navigate to the Search page (home page)
-   - At the top, you'll see the "Open WebUI Integration" section
-   - Copy the Edge Function URL and Authorization Token using the copy buttons
+**Note:** Only follow these steps if you need a custom Python tool. The OpenAPI integration is recommended for most users.
+
+1. **Get your Supabase credentials** from the `.env` file:
+   ```bash
+   cat .env
+   ```
 
 2. **Update the tool code** with your credentials:
    - Open the `openwebui_tool.py` file from this repository

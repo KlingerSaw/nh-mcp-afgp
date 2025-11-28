@@ -42,14 +42,26 @@ Dette projekt giver dig **færdige, copy-paste klare system prompts** til alle d
 
 ### Trin 1: Setup External Tool (Gør EN gang)
 
-1. I OpenWebUI: Gå til **Settings** → **Tools** → **External Tools**
+1. I OpenWebUI: Gå til **Settings** → **External Tools** (eller **Admin Settings** → **Tools** → **External Tools**)
 2. Klik **"Add External Tool"** eller **"Import from URL"**
 3. Indsæt:
-   - **URL:** `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json`
+   - **OpenAPI Spec URL:** `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json`
    - **Auth Type:** Bearer Token
-   - **Token:** `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvYXZ0dHR3bnN3YWx5bmVtbHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzMTkxNTYsImV4cCI6MjA3OTg5NTE1Nn0.XhZycTpqCLJ2YEkciMzwufJAL6LJ3gBa_EPCdtgcB0s`
-4. Klik **"Save"**
-5. OpenWebUI opdager automatisk alle søgeværktøjer (search_mfkn_naevneneshus_dk osv.)
+   - **Token:** Din Supabase Anon Key fra `.env` filen (se trin nedenfor)
+4. Klik **"Save"** eller **"Import"**
+5. OpenWebUI opdager automatisk **16+ søgeværktøjer** - ét for hver portal:
+   - `search_mfkn_naevneneshus_dk` - Miljø- og Fødevareklagenævnet
+   - `search_ekn_naevneneshus_dk` - Energiklagenævnet
+   - `search_pkn_naevneneshus_dk` - Planklagenævnet
+   - `search_fkn_naevneneshus_dk` - Færdselsklagenævnet
+   - ... og 12 andre portaler
+
+**Hvor finder jeg min Anon Key?**
+```bash
+cat .env
+# Find linjen: VITE_SUPABASE_ANON_KEY=eyJhbGci...
+# Kopier hele nøglen efter '='
+```
 
 ### Trin 2: Vælg System Prompt (For hver model)
 
@@ -178,13 +190,33 @@ Hver prompt indeholder:
 ### AI'en kalder ikke værktøjet
 
 **Tjek:**
-1. Er External Tool konfigureret? (Settings → Tools)
+1. Er External Tool konfigureret? (Settings → External Tools)
 2. Er værktøjsnavnet korrekt i prompten?
-3. Understøtter modellen function calling? (GPT-4, Claude 3.5+)
-4. Prøv at genstarte chat-sessionen
+3. Understøtter modellen function calling? (GPT-4, Claude 3.5+, GPT-3.5-turbo)
+4. Er værktøjerne synlige i chat-interfacet? (Tjek tool-ikonet)
+5. Prøv at genstarte chat-sessionen
 
 **Fix:**
 - Tilføj i prompten: "Du SKAL bruge værktøjet search_xxx ved HVER søgning"
+- Verificer at OpenAPI spec blev importeret korrekt (Settings → External Tools → Se om tools vises)
+- Test med en simpel søgning: "Find afgørelser om støj på MFKN"
+
+### Tools dukker ikke op efter import
+
+**Tjek:**
+1. Er OpenAPI URL korrekt? (skal ende med `/openapi.json`)
+2. Er Bearer Token korrekt indtastet?
+3. Er der fejl i import-loggen? (tjek browser console)
+4. Har du ventet 10-30 sekunder efter import?
+
+**Fix:**
+- Slet og genimporter External Tool
+- Verificer URL med curl:
+  ```bash
+  curl https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
+  ```
+- Tjek at du får et JSON-svar tilbage
+- Genstart OpenWebUI hvis problemet fortsætter
 
 ### Ingen resultater
 

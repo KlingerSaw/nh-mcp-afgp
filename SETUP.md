@@ -87,61 +87,83 @@ Verify the query was logged:
    - execution_time_ms: ~245
    - created_at: (just now)
 
-## Step 5: Set Up OpenWebUI Tool (5 minutes)
+## Step 5: Set Up OpenWebUI External Tool (3 minutes)
 
-1. Open the file `openwebui_tool.py` in this project
+**Recommended: OpenAPI Integration**
 
-2. Find these lines (around line 36):
-   ```python
-   self.mcp_url = "https://YOUR_SUPABASE_URL/functions/v1/naevneneshus-mcp"
-   self.headers = {
-       "Authorization": "Bearer YOUR_SUPABASE_ANON_KEY",
-       "Content-Type": "application/json"
-   }
-   ```
+1. In OpenWebUI:
+   - Go to **Settings** → **External Tools** (or **Admin Settings** → **Tools** → **External Tools**)
+   - Click **"Add External Tool"** or **"Import from URL"**
 
-3. Replace with your actual values:
-   ```python
-   self.mcp_url = "https://xxxxx.supabase.co/functions/v1/naevneneshus-mcp"
-   self.headers = {
-       "Authorization": "Bearer eyJhbGc...",
-       "Content-Type": "application/json"
-   }
-   ```
+2. Configure:
+   - **OpenAPI Spec URL**: `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json`
+   - **Auth Type**: Bearer Token
+   - **Token**: Your anon key from `.env` (the value of `VITE_SUPABASE_ANON_KEY`)
 
-4. Copy the entire file content (Ctrl+A, Ctrl+C)
+3. Click **"Save"** or **"Import"**
 
-5. In OpenWebUI:
-   - Click your profile icon → Settings
-   - Go to "Functions" tab
-   - Click "+ New Function" button
-   - Paste the code
-   - Click "Save"
+4. OpenWebUI will automatically discover **16+ tools** - one for each portal:
+   - `search_mfkn_naevneneshus_dk`
+   - `search_ekn_naevneneshus_dk`
+   - `search_pkn_naevneneshus_dk`
+   - `search_fkn_naevneneshus_dk`
+   - ... and 12 more
 
-6. The tool should now appear in your function list as "naevneneshus_search"
+5. Verify tools are loaded:
+   - Start a new chat
+   - Look for the tool icon (should show available tools)
+   - Or go to Settings → External Tools to see the list
+
+**Alternative: Custom Python Tool (Advanced)**
+
+If you prefer a custom Python function instead of OpenAPI:
+
+1. Open `openwebui_tool.py` and update credentials
+2. Copy the entire file
+3. Go to OpenWebUI Settings → Functions → New Function
+4. Paste and save
+
+Note: The OpenAPI method is recommended as it provides 16+ specialized tools automatically.
 
 ## Step 6: Test in OpenWebUI (2 minutes)
 
 1. Start a new chat in OpenWebUI
 
-2. Try these queries:
+2. **Important**: Select a model that supports function calling (GPT-4, Claude 3.5+, or GPT-3.5-turbo)
+
+3. Try these queries:
 
    ```
-   Search for jordforurening cases on MFKN
+   Find cases about noise pollution on MFKN
    ```
 
    ```
-   Find støj complaints from 2024
+   Search for jordforurening on Miljø- og Fødevareklagenævnet
    ```
 
    ```
-   Look up wind turbine cases on the energy board
+   What are recent wind turbine rulings on EKN?
    ```
 
-3. The AI should:
-   - Call the tool automatically
-   - Display formatted results
-   - Show titles, dates, and links
+4. The AI should:
+   - Automatically select the correct portal tool (e.g., `search_mfkn_naevneneshus_dk`)
+   - Call the tool with appropriate parameters
+   - Display formatted results with emojis
+   - Show titles, dates, categories, and clickable links
+   - Offer to show more results if available
+
+5. Expected output format:
+   ```
+   📋 Found 42 results for "jordforurening"
+   🌐 Portal: mfkn.naevneneshus.dk
+
+   📄 Showing 5 results:
+
+   1. Afgørelse om jordforurening...
+      📑 Jordforureningsloven
+      📅 Dato: 2024-03-15
+      🔗 https://mfkn.naevneneshus.dk/afgoerelse/...
+   ```
 
 ## Step 7: Run the Monitoring Dashboard (5 minutes)
 
@@ -202,15 +224,27 @@ Verify the query was logged:
 3. Check the portal is accessible: visit `https://mfkn.naevneneshus.dk` in browser
 4. Look in dashboard for error messages
 
-### OpenWebUI Tool Not Working
+### OpenWebUI External Tool Not Working
 
-**Problem**: Tool doesn't run or returns errors
+**Problem**: Tools don't appear or don't run
 
 **Solutions**:
-1. Verify you updated both `mcp_url` and headers in the tool code
-2. Check the authorization header includes "Bearer " prefix
-3. Test the endpoint with `curl` first (Step 3)
-4. Check OpenWebUI function logs for error details
+1. Verify the OpenAPI URL ends with `/openapi.json`
+2. Check the Bearer token is correct (copy from `.env` file)
+3. Test the OpenAPI endpoint:
+   ```bash
+   curl https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
+   ```
+4. Delete and re-import the External Tool
+5. Check browser console for import errors
+6. Ensure you're using a model that supports function calling (GPT-4, Claude 3.5+)
+
+**Problem**: Tool runs but returns errors
+
+**Solutions**:
+1. Test the endpoint with `curl` first (Step 3)
+2. Check OpenWebUI logs for detailed error messages
+3. Verify the Bearer token has not expired
 
 ### Dashboard Shows No Data
 
@@ -237,10 +271,14 @@ Verify the query was logged:
 After setup, verify:
 
 - [ ] Health endpoint returns `{"status":"healthy"}`
+- [ ] OpenAPI spec is accessible at `/openapi.json`
 - [ ] Test search returns results
 - [ ] Query appears in `query_logs` table
-- [ ] OpenWebUI tool is installed
-- [ ] OpenWebUI tool runs successfully
+- [ ] OpenWebUI External Tool is imported
+- [ ] **16+ tools are discovered** (search_mfkn_naevneneshus_dk, search_ekn_naevneneshus_dk, etc.)
+- [ ] Tools appear in chat interface
+- [ ] AI successfully calls tools when asked
+- [ ] Results are formatted with emojis and links
 - [ ] Dashboard shows query history
 - [ ] Dashboard updates in real-time
 - [ ] Statistics are calculated correctly
