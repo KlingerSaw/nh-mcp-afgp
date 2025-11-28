@@ -153,7 +153,14 @@ async function optimizeQuery(query: string, portal: string, supabase: any): Prom
 }
 
 Deno.serve(async (req: Request) => {
+  const requestId = crypto.randomUUID().substring(0, 8);
+  console.log(`\n[${requestId}] 📥 INCOMING REQUEST`);
+  console.log(`[${requestId}]   Method: ${req.method}`);
+  console.log(`[${requestId}]   URL: ${req.url}`);
+  console.log(`[${requestId}]   Time: ${new Date().toISOString()}`);
+
   if (req.method === 'OPTIONS') {
+    console.log(`[${requestId}] ✅ CORS preflight handled`);
     return new Response(null, {
       status: 200,
       headers: corsHeaders,
@@ -163,6 +170,14 @@ Deno.serve(async (req: Request) => {
   try {
     const url = new URL(req.url);
     const path = url.pathname;
+    console.log(`[${requestId}]   Path: ${path}`);
+
+    const authHeader = req.headers.get('authorization');
+    if (authHeader) {
+      console.log(`[${requestId}]   Auth: Bearer token present (${authHeader.length} chars)`);
+    } else {
+      console.log(`[${requestId}]   Auth: No authorization header`);
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -197,8 +212,7 @@ Deno.serve(async (req: Request) => {
     } else if (path.endsWith('/portals') && req.method === 'GET') {
       return await handlePortals();
     } else if (path.endsWith('/openapi.json') && req.method === 'GET') {
-      console.log('📖 OpenAPI spec requested');
-      console.log(`🌐 User-Agent: ${req.headers.get('user-agent')}`);
+      console.log(`[${requestId}] 📖 Routing to OpenAPI spec handler`);
       return handleOpenAPISpec(req);
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
@@ -601,21 +615,38 @@ async function handlePortals() {
 
 async function handleOpenAPISpec(req: Request) {
   try {
-    console.log('🔍 Starting OpenAPI Spec generation...');
+    console.log('=====================================');
+    console.log('🔍 OPENAPI SPEC REQUEST STARTED');
+    console.log('=====================================');
+    console.log('Timestamp:', new Date().toISOString());
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
-
-    console.log('✅ Got base URL:', baseUrl);
+    console.log('✅ Base URL:', baseUrl);
 
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('✅ Supabase Key Present:', supabaseKey ? 'YES (first 20 chars: ' + supabaseKey.substring(0, 20) + '...)' : 'NO');
 
-    console.log('✅ Created Supabase client');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('✅ Supabase client created successfully');
 
     const userAgent = req.headers.get('user-agent') || 'unknown';
     const authHeader = req.headers.get('authorization') || 'none';
     const authType = authHeader.startsWith('Bearer') ? 'Bearer' : authHeader === 'none' ? 'none' : 'other';
+
+    console.log('');
+    console.log('📋 REQUEST HEADERS:');
+    console.log('  - User-Agent:', userAgent);
+    console.log('  - Authorization Type:', authType);
+    if (authType === 'Bearer' && authHeader !== 'none') {
+      const tokenPreview = authHeader.substring(0, 20) + '...';
+      console.log('  - Token Preview:', tokenPreview);
+      console.log('  - Token Length:', authHeader.length);
+    }
+    console.log('  - Content-Type:', req.headers.get('content-type') || 'not set');
+    console.log('  - Accept:', req.headers.get('accept') || 'not set');
+    console.log('  - Origin:', req.headers.get('origin') || 'not set');
+    console.log('  - Referer:', req.headers.get('referer') || 'not set');
 
     const headerObj: Record<string, string> = {};
     req.headers.forEach((value, key) => {
@@ -624,36 +655,55 @@ async function handleOpenAPISpec(req: Request) {
       }
     });
 
-    console.log('🔍 OpenAPI Spec Request:');
-    console.log('  - User-Agent:', userAgent);
-    console.log('  - Auth Type:', authType);
+    console.log('');
 
-  console.log('📊 Fetching portals...');
+  console.log('📊 STEP 1: Fetching portals from database...');
   const { data: portals, error: portalsError } = await supabase
     .from('portal_metadata')
     .select('portal, name, domain_focus')
     .order('portal');
 
   if (portalsError) {
-    console.error('❌ Error fetching portals:', portalsError);
+    console.error('❌ ERROR: Failed to fetch portals');
+    console.error('  - Error Code:', portalsError.code);
+    console.error('  - Error Message:', portalsError.message);
+    console.error('  - Error Details:', portalsError.details);
     throw new Error(`Failed to fetch portals: ${portalsError.message}`);
   }
 
-  console.log(`✅ Fetched ${portals?.length || 0} portals`);
+  console.log(`✅ SUCCESS: Fetched ${portals?.length || 0} portals`);
+  if (portals && portals.length > 0) {
+    console.log('  - Portal List:', portals.map(p => p.portal).join(', '));
+  }
 
   const paths: any = {};
 
   if (portals && portals.length > 0) {
     const portalList = portals.map(p => p.portal);
 
-    console.log('📊 Fetching categories, legal areas, and acronyms...');
+    console.log('');
+    console.log('📊 STEP 2: Fetching metadata (categories, legal areas, acronyms...');
+    console.log('  - Fetching for portals:', portalList.length);
     const [categoriesResult, legalAreasResult, acronymsResult] = await Promise.all([
       supabase.from('site_categories').select('portal, category_title').in('portal', portalList),
       supabase.from('legal_areas').select('portal, area_name').in('portal', portalList),
       supabase.from('portal_acronyms').select('portal, acronym, full_term').in('portal', portalList)
     ]);
 
-    console.log(`✅ Categories: ${categoriesResult.data?.length || 0}, Legal areas: ${legalAreasResult.data?.length || 0}, Acronyms: ${acronymsResult.data?.length || 0}`);
+    if (categoriesResult.error) {
+      console.warn('⚠️  Warning: Categories fetch error:', categoriesResult.error.message);
+    }
+    if (legalAreasResult.error) {
+      console.warn('⚠️  Warning: Legal areas fetch error:', legalAreasResult.error.message);
+    }
+    if (acronymsResult.error) {
+      console.warn('⚠️  Warning: Acronyms fetch error:', acronymsResult.error.message);
+    }
+
+    console.log(`✅ SUCCESS: Metadata fetched`);
+    console.log(`  - Categories: ${categoriesResult.data?.length || 0}`);
+    console.log(`  - Legal areas: ${legalAreasResult.data?.length || 0}`);
+    console.log(`  - Acronyms: ${acronymsResult.data?.length || 0}`);
 
     const categoriesByPortal = new Map<string, string[]>();
     const legalAreasByPortal = new Map<string, string[]>();
@@ -680,7 +730,11 @@ async function handleOpenAPISpec(req: Request) {
       }
     });
 
+    console.log('');
+    console.log('📊 STEP 3: Building OpenAPI paths for each portal...');
+
     for (const portalMeta of portals) {
+      console.log(`  - Creating tool for: ${portalMeta.portal}`);
       const operationId = `search_${portalMeta.portal.replace(/[^a-z0-9]/gi, '_')}`;
       const categoryList = categoriesByPortal.get(portalMeta.portal)?.join(', ') || '';
       const legalAreaList = legalAreasByPortal.get(portalMeta.portal)?.join(', ') || '';
@@ -1111,11 +1165,16 @@ async function handleOpenAPISpec(req: Request) {
 
   const toolsCount = Object.keys(paths).filter(p => p.startsWith('/mcp/')).length;
 
-  console.log(`✅ Generated OpenAPI spec with ${toolsCount} portal-specific tools`);
-  console.log(`📊 Total paths: ${Object.keys(spec.paths).length}`);
+  console.log('');
+  console.log('✅ STEP 4: OpenAPI spec generation complete');
+  console.log(`  - Portal-specific tools: ${toolsCount}`);
+  console.log(`  - Total paths: ${Object.keys(spec.paths).length}`);
+  console.log(`  - Spec version: ${spec.info.version}`);
 
+    console.log('');
+    console.log('📝 STEP 5: Logging connection to database...');
     try {
-      await supabase.from('connection_logs').insert({
+      const logResult = await supabase.from('connection_logs').insert({
         endpoint: '/openapi.json',
         method: 'GET',
         user_agent: userAgent,
@@ -1124,15 +1183,31 @@ async function handleOpenAPISpec(req: Request) {
         tools_discovered: toolsCount,
         success: true,
       });
+
+      if (logResult.error) {
+        console.warn('⚠️  Warning: Failed to log connection:', logResult.error.message);
+      } else {
+        console.log('✅ Connection logged successfully');
+      }
     } catch (logError) {
-      console.error('Failed to log connection:', logError);
+      console.warn('⚠️  Warning: Exception logging connection:', logError);
     }
+
+    console.log('');
+    console.log('🎉 RETURNING OPENAPI SPEC TO CLIENT');
+    console.log('  - Response size:', JSON.stringify(spec).length, 'bytes');
+    console.log('=====================================');
 
     return new Response(JSON.stringify(spec, null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('❌ Error in handleOpenAPISpec:', error);
+    console.error('');
+    console.error('❌❌❌ CRITICAL ERROR IN OPENAPI SPEC GENERATION ❌❌❌');
+    console.error('Error Type:', error.constructor.name);
+    console.error('Error Message:', error.message);
+    console.error('Error Stack:', error.stack);
+    console.error('=====================================');
     return new Response(
       JSON.stringify({ error: 'Failed to generate OpenAPI spec', details: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
