@@ -93,7 +93,11 @@ export function SearchInterface() {
 
   function transformQuery(rawQuery: string) {
     const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
-    const tokens = cleanedQuery.match(/"[^"]+"|[^\s]+/g) || [];
+
+    let processedQuery = cleanedQuery;
+    processedQuery = processedQuery.replace(/§\s+(\d+)/g, '§ $1');
+
+    const tokens = processedQuery.match(/"[^"]+"|§\s+\d+[\w-]*|[^\s]+/g) || [];
     const removedFillerWords: string[] = [];
     const processed: string[] = [];
 
@@ -101,15 +105,7 @@ export function SearchInterface() {
       const normalized = token.replace(/^["']|["']$/g, '');
       const lower = normalized.toLowerCase();
 
-      if (['and', '&&', 'og'].includes(lower)) {
-        return;
-      }
-
-      if (['or', '||', 'eller'].includes(lower)) {
-        return;
-      }
-
-      if (normalized.length < 2 && normalized !== '§') {
+      if (['and', '&&', 'og', 'eller', 'or'].includes(lower)) {
         removedFillerWords.push(normalized);
         return;
       }
@@ -119,7 +115,13 @@ export function SearchInterface() {
         return;
       }
 
-      if (normalized.includes('§') || normalized.includes(' ')) {
+      if (normalized.match(/§\s+\d+/)) {
+        processed.push(`"${normalized}"`);
+      } else if (normalized.includes(' ')) {
+        processed.push(`"${normalized}"`);
+      } else if (normalized === '§') {
+        processed.push(`"§"`);
+      } else if (/^\d+$/.test(normalized)) {
         processed.push(`"${normalized}"`);
       } else {
         processed.push(normalized);
