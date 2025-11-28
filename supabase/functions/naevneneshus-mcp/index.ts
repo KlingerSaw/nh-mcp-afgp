@@ -6,19 +6,21 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
+interface CategoryFilter {
+  id: string;
+  title: string;
+}
+
 interface SearchRequest {
   portal: string;
   query: string;
-  page?: number;
-  pageSize?: number;
-  filters?: {
-    category?: string;
-    dateRange?: {
-      start?: string;
-      end?: string;
-    };
-  };
+  categories?: CategoryFilter[];
+  sort?: string;
+  types?: string[];
+  skip?: number;
+  size?: number;
   userIdentifier?: string;
+  originalQuery?: string;
 }
 
 interface FeedRequest {
@@ -72,7 +74,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.0.2',
+          version: '1.0.3',
           endpoints: ['/search', '/feed', '/publication', '/health']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -115,7 +117,7 @@ async function handleSearch(req: Request, supabase: any) {
     );
   }
 
-  const { portal, query, page = 1, pageSize = 10, filters = {}, userIdentifier } = body;
+  const { portal, query, categories = [], sort = 'Score', types = [], skip = 0, size = 10, userIdentifier, originalQuery } = body;
 
   if (!portal || !query) {
     return new Response(
@@ -127,12 +129,12 @@ async function handleSearch(req: Request, supabase: any) {
   try {
     const apiUrl = `https://${portal}/api/Search`;
     const payload = {
+      categories,
       query,
-      filters,
-      pagination: {
-        page,
-        pageSize,
-      },
+      sort,
+      types,
+      skip,
+      size,
     };
 
     const response = await fetch(apiUrl, {
@@ -151,8 +153,8 @@ async function handleSearch(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query,
-      filters,
+      query: originalQuery || query,
+      filters: { categories, sort, types },
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: userIdentifier,
@@ -173,8 +175,8 @@ async function handleSearch(req: Request, supabase: any) {
     
     await supabase.from('query_logs').insert({
       portal,
-      query,
-      filters,
+      query: originalQuery || query,
+      filters: { categories, sort, types },
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,

@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { mcpClient, SearchParams } from '../lib/mcpClient';
+import { mcpClient, SearchParams, CategoryFilter } from '../lib/mcpClient';
 import { Search, Loader2, ExternalLink } from 'lucide-react';
-import {
-  CategoryOption,
-  extractCategoriesFromSettings,
-  resolveCategoryFromQuery,
-} from '../lib/categoryMapper';
+import { resolveCategoryFromQuery, removeMatchedAliasFromQuery, ResolvedCategory } from '../lib/categoryResolver';
 
 const DEFAULT_PORTALS = [
   { value: 'fkn.naevneneshus.dk', label: 'Forbrugerklagenævnet' },
@@ -29,8 +25,6 @@ export function SearchInterface() {
   const [portals, setPortals] = useState<{ value: string; label: string }[]>(DEFAULT_PORTALS);
   const [portal, setPortal] = useState(DEFAULT_PORTALS[0].value);
   const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('');
-  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -44,10 +38,7 @@ export function SearchInterface() {
     optimizedQuery: string;
     removedFillerWords: string[];
   } | null>(null);
-  const [resolvedCategory, setResolvedCategory] = useState<
-    | { categoryId: string; categoryName: string; matchedAlias: string }
-    | null
-  >(null);
+  const [resolvedCategory, setResolvedCategory] = useState<ResolvedCategory | null>(null);
   const [requestPayload, setRequestPayload] = useState<string | null>(null);
   const [responsePayload, setResponsePayload] = useState<string | null>(null);
 
@@ -99,21 +90,6 @@ export function SearchInterface() {
     loadPortals();
   }, []);
 
-  useEffect(() => {
-    async function loadCategories() {
-      if (!portal) return;
-      try {
-        const response = await mcpClient.getSiteSettings(portal);
-        const categories = extractCategoriesFromSettings(response.settings ?? response);
-        setCategoryOptions(categories);
-      } catch (err) {
-        console.error('Failed to load categories', err);
-        setCategoryOptions([]);
-      }
-    }
-
-    loadCategories();
-  }, [portal]);
 
   function transformQuery(rawQuery: string) {
     const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
@@ -193,49 +169,31 @@ export function SearchInterface() {
     setResponsePayload(null);
     setResolvedCategory(null);
 
-    const filters: NonNullable<SearchParams['filters']> = {};
-    const explicitCategory = category.trim();
-
-    let workingQuery = cleanedQuery;
-
-    if (categoryOptions.length > 0) {
-      const match = resolveCategoryFromQuery(
-        cleanedQuery,
-        categoryOptions,
-        explicitCategory || undefined
-      );
-
-      if (match) {
-        filters.category = match.categoryId;
-        workingQuery = match.cleanedQuery || cleanedQuery;
-        setResolvedCategory({
-          categoryId: match.categoryId,
-          categoryName: match.categoryName,
-          matchedAlias: match.matchedAlias,
-        });
-      }
-    }
-
-    if (explicitCategory && !filters.category) {
-      filters.category = explicitCategory;
-    }
-
-    const transformed = transformQuery(workingQuery);
-
     try {
-      if (dateStart || dateEnd) {
-        filters.dateRange = {
-          ...(dateStart ? { start: dateStart } : {}),
-          ...(dateEnd ? { end: dateEnd } : {}),
-        };
+      let workingQuery = cleanedQuery;
+      const categories: CategoryFilter[] = [];
+
+      const resolved = await resolveCategoryFromQuery(cleanedQuery, portal);
+
+      if (resolved) {
+        categories.push({
+          id: resolved.id,
+          title: resolved.title,
+        });
+        workingQuery = removeMatchedAliasFromQuery(cleanedQuery, resolved.matchedAlias);
+        setResolvedCategory(resolved);
       }
+
+      const transformed = transformQuery(workingQuery);
 
       const params: SearchParams = {
         portal,
         query: transformed.optimizedQuery,
-        page: 1,
-        pageSize,
-        ...(Object.keys(filters).length > 0 ? { filters } : {}),
+        categories: categories.length > 0 ? categories : undefined,
+        sort: 'Score',
+        types: [],
+        skip: 0,
+        size: pageSize,
         originalQuery: cleanedQuery,
       };
 
@@ -315,17 +273,6 @@ export function SearchInterface() {
             {showAdvanced && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 border border-gray-200 rounded-lg p-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
-                  <input
-                    type="text"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    placeholder="e.g., Aktindsigt or Råstofloven"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                </div>
-
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Results per page</label>
                   <select
                     value={pageSize}
@@ -360,14 +307,14 @@ export function SearchInterface() {
                   />
                 </div>
 
-                {(dateStart || dateEnd || category || resolvedCategory) && (
+                {(dateStart || dateEnd || resolvedCategory) && (
                   <div className="md:col-span-2 flex items-center justify-between bg-white border border-blue-100 rounded-lg px-4 py-3">
                     <div className="text-sm text-gray-700">
                       <p className="font-medium">Active filters</p>
                       <p className="text-gray-600">
-                        {(category || resolvedCategory) && (
+                        {resolvedCategory && (
                           <span className="mr-2">
-                            Category: {category || resolvedCategory?.categoryName}
+                            Category: {resolvedCategory.title} (matched: {resolvedCategory.matchedAlias})
                           </span>
                         )}
                         {(dateStart || dateEnd) && (
@@ -380,7 +327,6 @@ export function SearchInterface() {
                     <button
                       type="button"
                       onClick={() => {
-                        setCategory('');
                         setDateStart('');
                         setDateEnd('');
                         setResolvedCategory(null);

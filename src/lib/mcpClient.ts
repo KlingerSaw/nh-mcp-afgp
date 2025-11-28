@@ -5,18 +5,19 @@ const headers = {
   'Content-Type': 'application/json',
 };
 
+export interface CategoryFilter {
+  id: string;
+  title: string;
+}
+
 export interface SearchParams {
   portal: string;
   query: string;
-  page?: number;
-  pageSize?: number;
-  filters?: {
-    category?: string;
-    dateRange?: {
-      start?: string;
-      end?: string;
-    };
-  };
+  categories?: CategoryFilter[];
+  sort?: string;
+  types?: string[];
+  skip?: number;
+  size?: number;
   userIdentifier?: string;
   originalQuery?: string;
 }
