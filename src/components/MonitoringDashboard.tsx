@@ -287,107 +287,32 @@ export function MonitoringDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
-                <Globe className="w-5 h-5 text-blue-600" />
-                OpenAPI Connections
-              </h2>
-              <p className="text-sm text-slate-600 mt-1">Seneste OpenAPI spec requests</p>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-              {connectionLogs.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">
-                  <Database className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                  <p>Ingen connections endnu</p>
-                  <p className="text-sm mt-1">Vent på OpenWebUI kalder API'et</p>
-                </div>
-              ) : (
-                connectionLogs.map((log) => (
-                  <div key={log.id} className="p-4 hover:bg-slate-50 transition">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        {log.success ? (
-                          <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <XCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                        )}
-                        <span className="font-medium text-slate-900">
-                          {log.method} {log.endpoint}
-                        </span>
-                      </div>
-                      <span className="text-xs text-slate-500">
-                        {formatRelativeTime(log.created_at)}
-                      </span>
-                    </div>
-
-                    <div className="ml-6 space-y-1 text-sm">
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <User className="w-3 h-3" />
-                        <span className="font-mono text-xs">{log.user_agent || 'Unknown'}</span>
-                      </div>
-
-                      <div className="flex items-center gap-4 text-slate-600">
-                        <span className="flex items-center gap-1">
-                          <span className="font-medium">Auth:</span>
-                          <span className={`px-2 py-0.5 rounded text-xs ${
-                            log.auth_type === 'Bearer'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}>
-                            {log.auth_type}
-                          </span>
-                        </span>
-
-                        {log.tools_discovered > 0 && (
-                          <span className="flex items-center gap-1">
-                            <span className="font-medium">Tools:</span>
-                            <span className="px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
-                              {log.tools_discovered}
-                            </span>
-                          </span>
-                        )}
-                      </div>
-
-                      {log.error_message && (
-                        <div className="text-red-600 text-xs bg-red-50 p-2 rounded mt-2">
-                          {log.error_message}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-6 border-b border-slate-200">
+            <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <Search className="w-5 h-5 text-orange-600" />
+              Query Logs
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">Seneste søgninger fra tools</p>
           </div>
+          <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+            {queryLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <Search className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p>Ingen queries endnu</p>
+                <p className="text-sm mt-1">Vent på tools bliver brugt</p>
+              </div>
+            ) : (
+              queryLogs.map((log) => {
+                const isExpanded = expandedQueryId === log.id;
+                const queryProcessing = log.filters?.queryProcessing;
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
-                <Search className="w-5 h-5 text-orange-600" />
-                Query Logs
-              </h2>
-              <p className="text-sm text-slate-600 mt-1">Seneste søgninger fra tools</p>
-            </div>
-            <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
-              {queryLogs.length === 0 ? (
-                <div className="p-8 text-center text-slate-500">
-                  <Search className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                  <p>Ingen queries endnu</p>
-                  <p className="text-sm mt-1">Vent på tools bliver brugt</p>
-                </div>
-              ) : (
-                queryLogs.map((log) => {
-                  const isExpanded = expandedQueryId === log.id;
-                  const queryProcessing = log.filters?.queryProcessing;
-
-                  return (
-                    <div key={log.id} className="border-b border-slate-200 last:border-b-0">
-                      <div
-                        className="p-4 hover:bg-slate-50 transition cursor-pointer"
-                        onClick={() => setExpandedQueryId(isExpanded ? null : log.id)}
-                      >
+                return (
+                  <div key={log.id} className="border-b border-slate-200 last:border-b-0">
+                    <div
+                      className="p-4 hover:bg-slate-50 transition cursor-pointer"
+                      onClick={() => setExpandedQueryId(isExpanded ? null : log.id)}
+                    >
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
                             <div className="font-medium text-slate-900 mb-1">
@@ -565,7 +490,6 @@ export function MonitoringDashboard() {
               )}
             </div>
           </div>
-        </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
           <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
