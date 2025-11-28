@@ -156,7 +156,7 @@ async function handleMCP(req: Request, supabase: any) {
     await supabase.from('query_logs').insert({
       portal,
       query,
-      filters: { sort: 'Date' },
+      filters: { sort: 1 },
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: 'mcp-client',
@@ -173,7 +173,7 @@ async function handleMCP(req: Request, supabase: any) {
     await supabase.from('query_logs').insert({
       portal,
       query,
-      filters: { sort: 'Date' },
+      filters: { sort: 1 },
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,
