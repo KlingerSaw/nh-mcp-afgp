@@ -171,6 +171,10 @@ Deno.serve(async (req: Request) => {
     const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
     if (mcpPortalMatch && req.method === 'POST') {
       const portal = mcpPortalMatch[1];
+      console.log(`🎯 Portal-specific tool called: ${portal}`);
+      console.log(`📍 Full path: ${path}`);
+      console.log(`🔑 Auth: ${req.headers.get('authorization') ? 'present' : 'missing'}`);
+
       const bodyText = await req.text();
       const body = JSON.parse(bodyText);
       body.portal = portal;
@@ -193,6 +197,8 @@ Deno.serve(async (req: Request) => {
     } else if (path.endsWith('/portals') && req.method === 'GET') {
       return await handlePortals();
     } else if (path.endsWith('/openapi.json') && req.method === 'GET') {
+      console.log('📖 OpenAPI spec requested');
+      console.log(`🌐 User-Agent: ${req.headers.get('user-agent')}`);
       return handleOpenAPISpec(req);
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
@@ -600,6 +606,22 @@ async function handleOpenAPISpec(req: Request) {
   const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseKey);
 
+  const userAgent = req.headers.get('user-agent') || 'unknown';
+  const authHeader = req.headers.get('authorization') || 'none';
+  const authType = authHeader.startsWith('Bearer') ? 'Bearer' : authHeader === 'none' ? 'none' : 'other';
+
+  const headerObj: Record<string, string> = {};
+  req.headers.forEach((value, key) => {
+    if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('key')) {
+      headerObj[key] = value;
+    }
+  });
+
+  console.log('🔍 OpenAPI Spec Request:');
+  console.log('  - User-Agent:', userAgent);
+  console.log('  - Auth Type:', authType);
+  console.log('  - Headers:', JSON.stringify(headerObj, null, 2));
+
   const { data: portals } = await supabase
     .from('portal_metadata')
     .select('portal, name, domain_focus')
@@ -970,6 +992,21 @@ async function handleOpenAPISpec(req: Request) {
       },
     ],
   };
+
+  const toolsCount = Object.keys(paths).filter(p => p.startsWith('/mcp/')).length;
+
+  console.log(`✅ Generated OpenAPI spec with ${toolsCount} portal-specific tools`);
+  console.log(`📊 Total paths: ${Object.keys(spec.paths).length}`);
+
+  await supabase.from('connection_logs').insert({
+    endpoint: '/openapi.json',
+    method: 'GET',
+    user_agent: userAgent,
+    auth_type: authType,
+    request_headers: headerObj,
+    tools_discovered: toolsCount,
+    success: true,
+  }).catch(err => console.error('Failed to log connection:', err));
 
   return new Response(JSON.stringify(spec, null, 2), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
