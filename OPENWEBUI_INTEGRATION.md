@@ -1,16 +1,51 @@
 # OpenWebUI Integration Guide
 
-This guide explains how to integrate the Naevneneshus MCP server with OpenWebUI.
+This guide explains how to integrate the Naevneneshus search API with OpenWebUI using OpenAPI specification.
 
-## MCP Server Endpoint
+## Quick Start - OpenAPI Integration (Recommended)
 
-The MCP server is deployed as a Supabase Edge Function and is accessible at:
+The API is now fully OpenAPI 3.0 compatible, making integration with OpenWebUI extremely simple.
+
+### Step 1: Get Your Credentials
+
+From your `.env` file or Supabase dashboard, you need:
+- **Supabase URL**: `https://soavtttwnswalynemlxr.supabase.co`
+- **Anon Key**: Your `VITE_SUPABASE_ANON_KEY`
+
+### Step 2: Add to OpenWebUI
+
+1. Open OpenWebUI Settings
+2. Navigate to **External Tools** or **Manage Tool Servers**
+3. Click **Add Connection**
+4. Configure:
+   - **URL**: `https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp`
+   - **OpenAPI Spec**: Select "URL" and enter `openapi.json`
+   - **Auth**: Select "Bearer" and paste your anon key
+5. Click **Save**
+
+OpenWebUI will automatically discover all available tools from the OpenAPI specification.
+
+### Step 3: Use in Chat
+
+Simply ask questions like:
+- "Search for jordforurening cases on mfkn.naevneneshus.dk"
+- "Find rulings about vindmoeller"
+- "What are the latest publications?"
+
+## API Endpoint
+
+The API is deployed as a Supabase Edge Function:
 
 ```
-https://YOUR_SUPABASE_URL/functions/v1/naevneneshus-mcp
+https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp
 ```
 
-Replace `YOUR_SUPABASE_URL` with your actual Supabase project URL.
+### OpenAPI Specification
+
+Access the full OpenAPI spec at:
+```
+https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
+```
 
 ## Available Endpoints
 

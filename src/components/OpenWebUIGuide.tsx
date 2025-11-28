@@ -154,38 +154,51 @@ print(response.text)`;
         <ol className="space-y-3 text-blue-50">
           <li className="flex items-start">
             <span className="font-bold mr-3">1.</span>
-            <span>Click "Download OpenAPI Spec" below to save the configuration file</span>
+            <span>Open Open WebUI and go to Settings → External Tools or Manage Tool Servers</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">2.</span>
-            <span>Open Open WebUI and go to Settings → External Tools</span>
+            <span>Click "Add Connection" or "+" to add a new tool server</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">3.</span>
-            <span>Click "+" to add a new connection</span>
+            <span>Enter the Base URL from below in the URL field</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">4.</span>
-            <span>Click "Import from OpenAPI Spec" and select the downloaded file</span>
+            <span>For OpenAPI Spec, select "URL" and enter: <code className="bg-blue-800 px-2 py-1 rounded">openapi.json</code></span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">5.</span>
-            <span>Copy the Authorization header below and paste it into the auth field</span>
+            <span>For Authentication, select "Bearer" and paste the anon key from below</span>
           </li>
           <li className="flex items-start">
             <span className="font-bold mr-3">6.</span>
-            <span>Save and start asking questions!</span>
+            <span>Click "Save" - Open WebUI will automatically discover all available search tools</span>
+          </li>
+          <li className="flex items-start">
+            <span className="font-bold mr-3">7.</span>
+            <span>Start asking questions like "Search for jordforurening cases on mfkn.naevneneshus.dk"</span>
           </li>
         </ol>
 
-        <div className="mt-6 flex gap-4">
+        <div className="mt-6 flex gap-4 flex-wrap">
           <button
             onClick={downloadOpenAPISpec}
             className="flex items-center gap-2 px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors shadow-lg"
           >
             <Download className="w-5 h-5" />
-            Download OpenAPI Spec
+            Download OpenAPI Spec (Optional)
           </button>
+          <a
+            href={`${mcpUrl}/openapi.json`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-6 py-3 bg-blue-800 text-white font-semibold rounded-lg hover:bg-blue-900 transition-colors shadow-lg"
+          >
+            <ExternalLink className="w-5 h-5" />
+            View OpenAPI Spec Online
+          </a>
         </div>
       </div>
 
@@ -216,23 +229,50 @@ print(response.text)`;
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Authorization Header
+                OpenAPI Spec URL
               </label>
               <div className="flex items-center gap-2">
-                <code className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-gray-800 truncate">
-                  {authHeader}
+                <code className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-gray-800">
+                  {mcpUrl}/openapi.json
                 </code>
                 <button
-                  onClick={() => copyToClipboard(authHeader, 'auth')}
+                  onClick={() => copyToClipboard(`${mcpUrl}/openapi.json`, 'openapi')}
                   className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                 >
-                  {copied === 'auth' ? (
+                  {copied === 'openapi' ? (
                     <Check className="w-5 h-5 text-green-600" />
                   ) : (
                     <Copy className="w-5 h-5" />
                   )}
                 </button>
               </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Enter "openapi.json" in Open WebUI (it will append to the base URL)
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Bearer Token (for Authentication)
+              </label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono text-gray-800 truncate">
+                  {apiKey}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(apiKey, 'token')}
+                  className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  {copied === 'token' ? (
+                    <Check className="w-5 h-5 text-green-600" />
+                  ) : (
+                    <Copy className="w-5 h-5" />
+                  )}
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-gray-500">
+                Select "Bearer" authentication in Open WebUI and paste this token
+              </p>
             </div>
           </div>
         </div>

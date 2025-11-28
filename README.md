@@ -5,6 +5,7 @@ A comprehensive solution for searching and monitoring Danish appeals boards (nae
 ## Features
 
 ### MCP Server (Supabase Edge Function)
+- **OpenAPI 3.0 compatible** - Full OpenAPI specification for easy integration
 - **Multi-portal support** - Works with any `*.naevneneshus.dk` portal
 - **Automatic query logging** - All searches logged to Supabase database
 - **Error tracking** - Captures and logs failed queries
@@ -77,7 +78,9 @@ Endpoints:
 - `POST /search` - Search for publications
 - `POST /feed` - Get latest publications
 - `POST /publication` - Get specific publication by ID
+- `GET /portals` - List available portals
 - `GET /health` - Health check
+- `GET /openapi.json` - OpenAPI 3.0 specification
 
 ### 3. Web Dashboard Setup
 

@@ -71,13 +71,15 @@ Deno.serve(async (req: Request) => {
       return await handleSiteSettings(req);
     } else if (path.endsWith('/portals') && req.method === 'GET') {
       return await handlePortals();
+    } else if (path.endsWith('/openapi.json') && req.method === 'GET') {
+      return handleOpenAPISpec(req);
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.0.4',
-          endpoints: ['/mcp', '/search', '/feed', '/publication', '/health']
+          version: '1.0.5',
+          endpoints: ['/mcp', '/search', '/feed', '/publication', '/health', '/openapi.json']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -92,7 +94,8 @@ Deno.serve(async (req: Request) => {
             { method: 'POST', path: '/publication', description: 'Get specific publication' },
             { method: 'POST', path: '/site-settings', description: 'Get portal SiteSettings with categories' },
             { method: 'GET', path: '/portals', description: 'List available portals' },
-            { method: 'GET', path: '/health', description: 'Health check' }
+            { method: 'GET', path: '/health', description: 'Health check' },
+            { method: 'GET', path: '/openapi.json', description: 'OpenAPI specification for Open WebUI integration' }
           ]
         }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -454,6 +457,239 @@ async function handlePortals() {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
+}
+
+function handleOpenAPISpec(req: Request) {
+  const url = new URL(req.url);
+  const baseUrl = `${url.protocol}//${url.host}${url.pathname.replace('/openapi.json', '')}`;
+
+  const spec = {
+    openapi: '3.0.0',
+    info: {
+      title: 'Nævneneshus Search API',
+      version: '1.0.5',
+      description: 'Search Danish administrative rulings across multiple portals including Miljø- og Fødevareklagenævnet, Ankestyrelsen, Erhvervsklagenævnet, and Patientklagenævnet.',
+    },
+    servers: [
+      {
+        url: baseUrl,
+        description: 'Supabase Edge Function',
+      },
+    ],
+    paths: {
+      '/search': {
+        post: {
+          summary: 'Search publications',
+          description: 'Search for administrative rulings and publications across Danish portals',
+          operationId: 'searchPublications',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['portal', 'query'],
+                  properties: {
+                    portal: {
+                      type: 'string',
+                      description: 'Portal hostname',
+                      enum: [
+                        'mfkn.naevneneshus.dk',
+                        'aen.naevneneshus.dk',
+                        'ekn.naevneneshus.dk',
+                        'pn.naevneneshus.dk',
+                      ],
+                      default: 'mfkn.naevneneshus.dk',
+                    },
+                    query: {
+                      type: 'string',
+                      description: 'Search query in Danish',
+                      example: 'jordforurening',
+                    },
+                    categories: {
+                      type: 'array',
+                      description: 'Filter by categories',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          title: { type: 'string' },
+                        },
+                      },
+                    },
+                    sort: {
+                      type: 'string',
+                      description: 'Sort order',
+                      enum: ['Score', 'Date'],
+                      default: 'Score',
+                    },
+                    types: {
+                      type: 'array',
+                      description: 'Publication types',
+                      items: {
+                        type: 'string',
+                        enum: ['ruling', 'news'],
+                      },
+                    },
+                    skip: {
+                      type: 'integer',
+                      description: 'Number of results to skip for pagination',
+                      default: 0,
+                    },
+                    size: {
+                      type: 'integer',
+                      description: 'Number of results to return',
+                      default: 10,
+                      maximum: 100,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Successful search',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      totalCount: { type: 'integer' },
+                      publications: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string' },
+                            title: { type: 'string' },
+                            date: { type: 'string' },
+                            categories: {
+                              type: 'array',
+                              items: { type: 'string' },
+                            },
+                            jnr: {
+                              type: 'array',
+                              items: { type: 'string' },
+                            },
+                            type: {
+                              type: 'string',
+                              enum: ['ruling', 'news'],
+                            },
+                          },
+                        },
+                      },
+                      categoryCounts: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            category: { type: 'string' },
+                            count: { type: 'integer' },
+                          },
+                        },
+                      },
+                      meta: {
+                        type: 'object',
+                        properties: {
+                          executionTime: { type: 'integer' },
+                          portal: { type: 'string' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': {
+              description: 'Bad request',
+            },
+            '500': {
+              description: 'Internal server error',
+            },
+          },
+        },
+      },
+      '/portals': {
+        get: {
+          summary: 'List available portals',
+          description: 'Get list of all available Nævneneshus portals',
+          operationId: 'listPortals',
+          responses: {
+            '200': {
+              description: 'List of portals',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      portals: {
+                        type: 'array',
+                        items: { type: 'string' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      '/feed': {
+        post: {
+          summary: 'Get latest publications',
+          description: 'Retrieve latest publications from a portal',
+          operationId: 'getLatestPublications',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['portal'],
+                  properties: {
+                    portal: {
+                      type: 'string',
+                      description: 'Portal hostname',
+                      enum: [
+                        'mfkn.naevneneshus.dk',
+                        'aen.naevneneshus.dk',
+                        'ekn.naevneneshus.dk',
+                        'pn.naevneneshus.dk',
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Latest publications',
+            },
+          },
+        },
+      },
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          description: 'Supabase anon key for authentication',
+        },
+      },
+    },
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
+  };
+
+  return new Response(JSON.stringify(spec, null, 2), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
 
 async function handlePublication(req: Request, supabase: any) {
