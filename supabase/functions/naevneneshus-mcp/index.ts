@@ -59,7 +59,9 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (path.endsWith('/search') && req.method === 'POST') {
+    if (path.endsWith('/mcp') && req.method === 'POST') {
+      return await handleMCP(req, supabase);
+    } else if (path.endsWith('/search') && req.method === 'POST') {
       return await handleSearch(req, supabase);
     } else if (path.endsWith('/feed') && req.method === 'POST') {
       return await handleFeed(req, supabase);
@@ -74,8 +76,8 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.0.3',
-          endpoints: ['/search', '/feed', '/publication', '/health']
+          version: '1.0.4',
+          endpoints: ['/mcp', '/search', '/feed', '/publication', '/health']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -84,6 +86,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           error: 'Not found',
           availableEndpoints: [
+            { method: 'POST', path: '/mcp', description: 'MCP-compatible search (accepts query string, returns formatted text)' },
             { method: 'POST', path: '/search', description: 'Search publications' },
             { method: 'POST', path: '/feed', description: 'Get latest publications' },
             { method: 'POST', path: '/publication', description: 'Get specific publication' },
@@ -103,6 +106,149 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+async function handleMCP(req: Request, supabase: any) {
+  const startTime = Date.now();
+  let body: { query: string; portal?: string; page?: number; pageSize?: number };
+
+  try {
+    body = await req.json();
+  } catch (error) {
+    return new Response(
+      'Error: Invalid JSON in request body. Expected format: {"query": "your search", "portal": "mfkn.naevneneshus.dk"}',
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+    );
+  }
+
+  const { query, portal = 'mfkn.naevneneshus.dk', page = 1, pageSize = 5 } = body;
+
+  if (!query) {
+    return new Response(
+      'Error: "query" parameter is required. Example: {"query": "jordforurening"}',
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+    );
+  }
+
+  try {
+    const apiUrl = `https://${portal}/api/Search`;
+    const payload = {
+      query,
+      parameters: {},
+      sort: 1,
+      skip: (page - 1) * pageSize,
+      size: pageSize,
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const executionTime = Date.now() - startTime;
+    const resultCount = data.totalCount || 0;
+
+    await supabase.from('query_logs').insert({
+      portal,
+      query,
+      filters: { sort: 'Date' },
+      result_count: resultCount,
+      execution_time_ms: executionTime,
+      user_identifier: 'mcp-client',
+    });
+
+    const formattedResult = formatMCPResults(data, portal, query, executionTime);
+
+    return new Response(formattedResult, {
+      headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' }
+    });
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+
+    await supabase.from('query_logs').insert({
+      portal,
+      query,
+      filters: { sort: 'Date' },
+      result_count: 0,
+      execution_time_ms: executionTime,
+      error_message: error.message,
+      user_identifier: 'mcp-client',
+    });
+
+    return new Response(
+      `Error: ${error.message}`,
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/plain' } }
+    );
+  }
+}
+
+function formatMCPResults(data: any, portal: string, query: string, executionTime: number): string {
+  const total = data.totalCount || 0;
+  const publications = data.publications || [];
+
+  if (total === 0) {
+    return `🔍 Ingen resultater fundet for "${query}" på ${portal}\n\n💡 Prøv:\n- Brug andre søgeord\n- Fjern datofiltre\n- Tjek stavning`;
+  }
+
+  const lines: string[] = [
+    `📋 Fandt ${total} resultater for "${query}"`,
+    `🌐 Portal: ${portal}`,
+    `⏱️ Søgetid: ${executionTime}ms`,
+    '',
+  ];
+
+  const categoryCounts = data.categoryCounts || [];
+  if (categoryCounts.length > 0) {
+    lines.push('📊 Kategorier:');
+    for (const cat of categoryCounts.slice(0, 5)) {
+      lines.push(`   • ${cat.category}: ${cat.count}`);
+    }
+    lines.push('');
+  }
+
+  lines.push(`📄 Viser ${publications.length} resultater:`);
+  lines.push('─'.repeat(60));
+
+  for (let i = 0; i < publications.length; i++) {
+    const pub = publications[i];
+    const title = pub.title || 'Uden titel';
+    const categories = pub.categories || [];
+    const jnr = pub.jnr || [];
+    const date = pub.date || 'N/A';
+    const pubId = pub.id || '';
+    const pubType = pub.type || 'ruling';
+
+    const link = `https://${portal}/${pubType === 'news' ? 'nyhed' : 'afgoerelse'}/${pubId}`;
+
+    lines.push('');
+    lines.push(`${i + 1}. ${title}`);
+
+    if (categories.length > 0) {
+      lines.push(`   📑 ${categories.join(', ')}`);
+    }
+
+    if (jnr.length > 0) {
+      lines.push(`   📋 Journal: ${jnr.join(', ')}`);
+    }
+
+    lines.push(`   📅 Dato: ${date}`);
+    lines.push(`   🔗 ${link}`);
+  }
+
+  if (total > publications.length) {
+    const nextPage = Math.floor((data.skip || 0) / (data.size || 10)) + 2;
+    lines.push('');
+    lines.push('─'.repeat(60));
+    lines.push(`💡 Viser ${publications.length} af ${total} resultater. Brug page=${nextPage} for flere.`);
+  }
+
+  return lines.join('\n');
+}
 
 async function handleSearch(req: Request, supabase: any) {
   const startTime = Date.now();
@@ -172,7 +318,7 @@ async function handleSearch(req: Request, supabase: any) {
     );
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    
+
     await supabase.from('query_logs').insert({
       portal,
       query: originalQuery || query,
