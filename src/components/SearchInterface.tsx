@@ -102,16 +102,14 @@ export function SearchInterface() {
       const lower = normalized.toLowerCase();
 
       if (['and', '&&', 'og'].includes(lower)) {
-        processed.push('AND');
         return;
       }
 
       if (['or', '||', 'eller'].includes(lower)) {
-        processed.push('OR');
         return;
       }
 
-      if (normalized.length < 3) {
+      if (normalized.length < 2 && normalized !== '§') {
         removedFillerWords.push(normalized);
         return;
       }
@@ -121,22 +119,18 @@ export function SearchInterface() {
         return;
       }
 
-      const wildcarded = normalized.length >= 3 ? `%${normalized}%` : normalized;
-      const quoted = normalized.includes(' ') ? `"${normalized}"` : `"${wildcarded}"`;
-      processed.push(quoted);
+      if (normalized.includes('§') || normalized.includes(' ')) {
+        processed.push(`"${normalized}"`);
+      } else {
+        processed.push(normalized);
+      }
     });
 
     const optimizedParts: string[] = [];
     for (let i = 0; i < processed.length; i++) {
       const current = processed[i];
-      const prev = processed[i - 1];
 
-      if (current === 'AND' || current === 'OR') {
-        optimizedParts.push(current);
-        continue;
-      }
-
-      if (i > 0 && prev !== 'AND' && prev !== 'OR') {
+      if (i > 0) {
         optimizedParts.push('AND');
       }
 
@@ -398,7 +392,7 @@ export function SearchInterface() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-xs text-blue-700 uppercase tracking-wide">Category detected</p>
                 <p className="text-sm text-blue-900 font-medium">
-                  Matched "{resolvedCategory.matchedAlias}" → {resolvedCategory.categoryName} (ID: {resolvedCategory.categoryId})
+                  Matched "{resolvedCategory.matchedAlias}" → {resolvedCategory.title}
                 </p>
                 <p className="text-xs text-blue-700 mt-1">
                   We removed the matched word from the query and applied the category filter automatically.
