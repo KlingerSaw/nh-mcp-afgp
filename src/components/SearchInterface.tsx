@@ -8,17 +8,26 @@ import {
 } from '../lib/categoryMapper';
 
 const DEFAULT_PORTALS = [
-  'mfkn.naevneneshus.dk',
-  'aen.naevneneshus.dk',
-  'ekn.naevneneshus.dk',
-  'pn.naevneneshus.dk',
+  { value: 'fkn.naevneneshus.dk', label: 'Forbrugerklagenævnet' },
+  { value: 'pkn.naevneneshus.dk', label: 'Planklagenævnet' },
+  { value: 'mfkn.naevneneshus.dk', label: 'Miljø og Fødevareklagenævnet' },
+  { value: 'dkbb.naevneneshus.dk', label: 'Disciplinær- og klagenævnet for beskikkede bygningssagkyndige' },
+  { value: 'dnfe.naevneneshus.dk', label: 'Disciplinærnævnet for Ejendomsmæglere' },
+  { value: 'klfu.naevneneshus.dk', label: 'Klagenævnet for Udbud' },
+  { value: 'tele.naevneneshus.dk', label: 'Teleklagenævnet' },
+  { value: 'rn.naevneneshus.dk', label: 'Revisornævnet' },
+  { value: 'apv.naevneneshus.dk', label: 'Ankenævnet for Patenter og Varemærker' },
+  { value: 'tvist.naevneneshus.dk', label: 'Tvistighedsnævnet' },
+  { value: 'ean.naevneneshus.dk', label: 'Erhvervsankenævnet' },
+  { value: 'byf.naevneneshus.dk', label: 'Byfornyelsesnævnene' },
+  { value: 'ekn.naevneneshus.dk', label: 'Energiklagenævnet' },
 ];
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30];
 
 export function SearchInterface() {
-  const [portals, setPortals] = useState<string[]>(DEFAULT_PORTALS);
-  const [portal, setPortal] = useState(DEFAULT_PORTALS[0]);
+  const [portals, setPortals] = useState<{ value: string; label: string }[]>(DEFAULT_PORTALS);
+  const [portal, setPortal] = useState(DEFAULT_PORTALS[0].value);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
   const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
@@ -73,13 +82,17 @@ export function SearchInterface() {
       try {
         const { portals: fetchedPortals } = await mcpClient.getPortals();
         if (Array.isArray(fetchedPortals) && fetchedPortals.length > 0) {
-          setPortals(fetchedPortals);
-          setPortal(fetchedPortals[0]);
+          const portalObjects = fetchedPortals.map((p: string) => {
+            const existing = DEFAULT_PORTALS.find(dp => dp.value === p);
+            return existing || { value: p, label: p };
+          });
+          setPortals(portalObjects);
+          setPortal(portalObjects[0].value);
         }
       } catch (err) {
         console.error('Failed to load portals, using defaults', err);
         setPortals(DEFAULT_PORTALS);
-        setPortal(DEFAULT_PORTALS[0]);
+        setPortal(DEFAULT_PORTALS[0].value);
       }
     }
 
@@ -262,8 +275,8 @@ export function SearchInterface() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               >
                 {portals.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
+                  <option key={p.value} value={p.value}>
+                    {p.label}
                   </option>
                 ))}
               </select>
