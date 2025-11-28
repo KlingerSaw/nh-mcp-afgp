@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { mcpClient, SearchParams, CategoryFilter } from '../lib/mcpClient';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, ExternalLink } from 'lucide-react';
 import { resolveCategoryFromQuery, removeMatchedAliasFromQuery, ResolvedCategory } from '../lib/categoryResolver';
 
 const DEFAULT_PORTALS = [
