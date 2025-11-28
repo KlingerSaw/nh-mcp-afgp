@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Activity, Database, Search, RefreshCw, CheckCircle, XCircle, Clock, User, Globe, AlertTriangle } from 'lucide-react';
+import { Activity, Database, Search, RefreshCw, CheckCircle, XCircle, Clock, User, Globe, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface ConnectionLog {
   id: string;
@@ -71,6 +71,7 @@ export function MonitoringDashboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchConnectionLogs = async () => {
     const { data, error } = await supabase
@@ -143,6 +144,30 @@ export function MonitoringDashboard() {
     ]);
     setLastUpdate(new Date());
     setLoading(false);
+  };
+
+  const deleteAllLogs = async () => {
+    if (!confirm('Er du sikker på at du vil slette alle logs? Dette kan ikke fortrydes.')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const [queryResult, connectionResult] = await Promise.all([
+        supabase.from('query_logs').delete().gte('created_at', '1900-01-01'),
+        supabase.from('connection_logs').delete().gte('created_at', '1900-01-01')
+      ]);
+
+      if (queryResult.error) throw queryResult.error;
+      if (connectionResult.error) throw connectionResult.error;
+
+      await refreshAll();
+    } catch (error) {
+      console.error('Error deleting logs:', error);
+      alert('Der opstod en fejl ved sletning af logs');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -254,6 +279,14 @@ export function MonitoringDashboard() {
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               Opdater
+            </button>
+            <button
+              onClick={deleteAllLogs}
+              disabled={deleting}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            >
+              <Trash2 className="w-5 h-5" />
+              {deleting ? 'Sletter...' : 'Slet alle logs'}
             </button>
           </div>
         </div>
