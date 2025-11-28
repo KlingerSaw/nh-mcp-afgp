@@ -389,13 +389,16 @@ print(response.text)`;
         </h3>
         <div className="space-y-2">
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <span className="text-blue-900">"Search for jordforurening rulings"</span>
+            <span className="text-blue-900">"Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"</span>
           </div>
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <span className="text-blue-900">"Find støj decisions from 2024"</span>
+            <span className="text-blue-900">"Praksissøgning efter NBL § 26 a – nedlæggelse af sti"</span>
           </div>
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <span className="text-blue-900">"Search ekn.naevneneshus.dk for vindmøller"</span>
+            <span className="text-blue-900">"Afgørelser om oplag af planteaffald"</span>
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <span className="text-blue-900">"PFAS-forurening, kategori: jordforureningsloven"</span>
           </div>
         </div>
       </div>
