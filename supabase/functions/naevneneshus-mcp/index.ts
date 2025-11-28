@@ -600,59 +600,91 @@ async function handlePortals() {
 }
 
 async function handleOpenAPISpec(req: Request) {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
+  try {
+    console.log('🔍 Starting OpenAPI Spec generation...');
 
-  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
 
-  const userAgent = req.headers.get('user-agent') || 'unknown';
-  const authHeader = req.headers.get('authorization') || 'none';
-  const authType = authHeader.startsWith('Bearer') ? 'Bearer' : authHeader === 'none' ? 'none' : 'other';
+    console.log('✅ Got base URL:', baseUrl);
 
-  const headerObj: Record<string, string> = {};
-  req.headers.forEach((value, key) => {
-    if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('key')) {
-      headerObj[key] = value;
-    }
-  });
+    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-  console.log('🔍 OpenAPI Spec Request:');
-  console.log('  - User-Agent:', userAgent);
-  console.log('  - Auth Type:', authType);
-  console.log('  - Headers:', JSON.stringify(headerObj, null, 2));
+    console.log('✅ Created Supabase client');
 
-  const { data: portals } = await supabase
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+    const authHeader = req.headers.get('authorization') || 'none';
+    const authType = authHeader.startsWith('Bearer') ? 'Bearer' : authHeader === 'none' ? 'none' : 'other';
+
+    const headerObj: Record<string, string> = {};
+    req.headers.forEach((value, key) => {
+      if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('key')) {
+        headerObj[key] = value;
+      }
+    });
+
+    console.log('🔍 OpenAPI Spec Request:');
+    console.log('  - User-Agent:', userAgent);
+    console.log('  - Auth Type:', authType);
+
+  console.log('📊 Fetching portals...');
+  const { data: portals, error: portalsError } = await supabase
     .from('portal_metadata')
     .select('portal, name, domain_focus')
     .order('portal');
 
+  if (portalsError) {
+    console.error('❌ Error fetching portals:', portalsError);
+    throw new Error(`Failed to fetch portals: ${portalsError.message}`);
+  }
+
+  console.log(`✅ Fetched ${portals?.length || 0} portals`);
+
   const paths: any = {};
 
   if (portals && portals.length > 0) {
+    const portalList = portals.map(p => p.portal);
+
+    console.log('📊 Fetching categories, legal areas, and acronyms...');
+    const [categoriesResult, legalAreasResult, acronymsResult] = await Promise.all([
+      supabase.from('site_categories').select('portal, category_title').in('portal', portalList),
+      supabase.from('legal_areas').select('portal, area_name').in('portal', portalList),
+      supabase.from('portal_acronyms').select('portal, acronym, full_term').in('portal', portalList)
+    ]);
+
+    console.log(`✅ Categories: ${categoriesResult.data?.length || 0}, Legal areas: ${legalAreasResult.data?.length || 0}, Acronyms: ${acronymsResult.data?.length || 0}`);
+
+    const categoriesByPortal = new Map<string, string[]>();
+    const legalAreasByPortal = new Map<string, string[]>();
+    const acronymsByPortal = new Map<string, Array<{acronym: string, full_term: string}>>();
+
+    categoriesResult.data?.forEach(c => {
+      if (!categoriesByPortal.has(c.portal)) categoriesByPortal.set(c.portal, []);
+      if (categoriesByPortal.get(c.portal)!.length < 10) {
+        categoriesByPortal.get(c.portal)!.push(c.category_title);
+      }
+    });
+
+    legalAreasResult.data?.forEach(a => {
+      if (!legalAreasByPortal.has(a.portal)) legalAreasByPortal.set(a.portal, []);
+      if (legalAreasByPortal.get(a.portal)!.length < 10) {
+        legalAreasByPortal.get(a.portal)!.push(a.area_name);
+      }
+    });
+
+    acronymsResult.data?.forEach(a => {
+      if (!acronymsByPortal.has(a.portal)) acronymsByPortal.set(a.portal, []);
+      if (acronymsByPortal.get(a.portal)!.length < 5) {
+        acronymsByPortal.get(a.portal)!.push({acronym: a.acronym, full_term: a.full_term});
+      }
+    });
+
     for (const portalMeta of portals) {
-      const { data: categories } = await supabase
-        .from('site_categories')
-        .select('category_title')
-        .eq('portal', portalMeta.portal)
-        .limit(10);
-
-      const { data: legalAreas } = await supabase
-        .from('legal_areas')
-        .select('area_name')
-        .eq('portal', portalMeta.portal)
-        .limit(10);
-
-      const { data: acronyms } = await supabase
-        .from('portal_acronyms')
-        .select('acronym, full_term')
-        .eq('portal', portalMeta.portal)
-        .limit(5);
-
       const operationId = `search_${portalMeta.portal.replace(/[^a-z0-9]/gi, '_')}`;
-      const categoryList = categories?.map(c => c.category_title).join(', ') || '';
-      const legalAreaList = legalAreas?.map(a => a.area_name).join(', ') || '';
-      const acronymList = acronyms?.map(a => `${a.acronym} (${a.full_term})`).join(', ') || '';
+      const categoryList = categoriesByPortal.get(portalMeta.portal)?.join(', ') || '';
+      const legalAreaList = legalAreasByPortal.get(portalMeta.portal)?.join(', ') || '';
+      const acronymList = acronymsByPortal.get(portalMeta.portal)?.map(a => `${a.acronym} (${a.full_term})`).join(', ') || '';
 
       let description = `Søg i ${portalMeta.name || portalMeta.portal} - danske administrative afgørelser.\n\nEksempel: {"query": "jordforurening"}`;
       if (legalAreaList) {
@@ -998,19 +1030,26 @@ async function handleOpenAPISpec(req: Request) {
   console.log(`✅ Generated OpenAPI spec with ${toolsCount} portal-specific tools`);
   console.log(`📊 Total paths: ${Object.keys(spec.paths).length}`);
 
-  await supabase.from('connection_logs').insert({
-    endpoint: '/openapi.json',
-    method: 'GET',
-    user_agent: userAgent,
-    auth_type: authType,
-    request_headers: headerObj,
-    tools_discovered: toolsCount,
-    success: true,
-  }).catch(err => console.error('Failed to log connection:', err));
+    await supabase.from('connection_logs').insert({
+      endpoint: '/openapi.json',
+      method: 'GET',
+      user_agent: userAgent,
+      auth_type: authType,
+      request_headers: headerObj,
+      tools_discovered: toolsCount,
+      success: true,
+    }).catch(err => console.error('Failed to log connection:', err));
 
-  return new Response(JSON.stringify(spec, null, 2), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+    return new Response(JSON.stringify(spec, null, 2), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('❌ Error in handleOpenAPISpec:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to generate OpenAPI spec', details: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }
 
 async function handlePublication(req: Request, supabase: any) {
