@@ -44,7 +44,7 @@ const DEFAULT_PORTALS = [
 ];
 
 function parseQueryWithCategories(queryString: string): { cleanQuery: string; categoryTitles: string[] } {
-  const categoryRegex = /,?\s*kategori:\s*([^,]+)/gi;
+  const categoryRegex = /,?\s*kategori:\s*([^,\n]+)/gi;
   const categoryTitles: string[] = [];
   let match;
 
@@ -52,7 +52,15 @@ function parseQueryWithCategories(queryString: string): { cleanQuery: string; ca
     categoryTitles.push(match[1].trim());
   }
 
-  const cleanQuery = queryString.replace(categoryRegex, '').trim();
+  let cleanQuery = queryString.replace(categoryRegex, '').trim();
+
+  cleanQuery = cleanQuery.replace(/\s+(AND|OR)\s*$/i, '').trim();
+  cleanQuery = cleanQuery.replace(/^\s*(AND|OR)\s+/i, '').trim();
+
+  cleanQuery = cleanQuery.replace(/,\s*$/, '').trim();
+  cleanQuery = cleanQuery.replace(/^\s*,/, '').trim();
+
+  cleanQuery = cleanQuery.replace(/\s+/g, ' ').trim();
 
   return { cleanQuery, categoryTitles };
 }
@@ -248,7 +256,14 @@ async function handleMCP(req: Request, supabase: any) {
   const { cleanQuery, categoryTitles } = parseQueryWithCategories(query);
   const categories = await resolveCategoryIds(portal, categoryTitles, supabase);
 
+  console.log('Original query:', query);
+  console.log('Clean query:', cleanQuery);
+  console.log('Category titles:', categoryTitles);
+  console.log('Resolved categories:', categories);
+
   const optimizedQuery = await optimizeQuery(cleanQuery, portal, supabase);
+
+  console.log('Optimized query:', optimizedQuery);
 
   try {
     const apiUrl = `https://${portal}/api/Search`;
