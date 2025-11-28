@@ -1008,6 +1008,90 @@ async function handleOpenAPISpec(req: Request) {
           },
         },
       },
+      '/publication': {
+        post: {
+          summary: 'Get publication details',
+          description: 'Retrieve a specific publication by portal and ID',
+          operationId: 'getPublication',
+          'x-openai-isConsequential': false,
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['portal', 'id'],
+                  properties: {
+                    portal: {
+                      type: 'string',
+                      description: 'Portal hostname',
+                      enum: [
+                        'fkn.naevneneshus.dk',
+                        'pkn.naevneneshus.dk',
+                        'mfkn.naevneneshus.dk',
+                        'dkbb.naevneneshus.dk',
+                        'dnfe.naevneneshus.dk',
+                        'klfu.naevneneshus.dk',
+                        'tele.naevneneshus.dk',
+                        'rn.naevneneshus.dk',
+                        'apv.naevneneshus.dk',
+                        'tvist.naevneneshus.dk',
+                        'ean.naevneneshus.dk',
+                        'byf.naevneneshus.dk',
+                        'ekn.naevneneshus.dk',
+                      ],
+                    },
+                    id: {
+                      type: 'string',
+                      description: 'Publication identifier from the portal API',
+                      example: '94b2f761-8b61-4f83-9c15-123456789abc',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Publication details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    additionalProperties: true,
+                  },
+                },
+              },
+            },
+            '400': {
+              description: 'Missing portal or publication ID',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+            '500': {
+              description: 'Server error when fetching publication',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      error: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {
