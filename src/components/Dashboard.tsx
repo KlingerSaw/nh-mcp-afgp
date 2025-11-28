@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase, QueryLog } from '../lib/supabase';
 import { AlertTriangle, Activity, Clock, Search } from 'lucide-react';
 
 export function Dashboard() {
   const [logs, setLogs] = useState<QueryLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedLog, setSelectedLog] = useState<QueryLog | null>(null);
   const [stats, setStats] = useState({
     total: 0,
     emptyResults: 0,
@@ -61,6 +62,34 @@ export function Dashboard() {
   const alertLogs = logs.filter(
     log => (log.result_count === 0 && !log.error_message) || log.result_count > 50
   );
+
+  const requestPayload = useMemo(() => {
+    if (!selectedLog) return null;
+
+    if (selectedLog.request_payload) {
+      return selectedLog.request_payload;
+    }
+
+    return {
+      portal: selectedLog.portal,
+      query: selectedLog.query,
+      filters: selectedLog.filters,
+    };
+  }, [selectedLog]);
+
+  const responsePayload = useMemo(() => {
+    if (!selectedLog) return null;
+
+    if (selectedLog.response_payload) {
+      return selectedLog.response_payload;
+    }
+
+    return {
+      result_count: selectedLog.result_count,
+      execution_time_ms: selectedLog.execution_time_ms,
+      error_message: selectedLog.error_message,
+    };
+  }, [selectedLog]);
 
   if (loading) {
     return (
@@ -155,59 +184,63 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {logs.map((log) => (
-                  <tr
-                    key={log.id}
-                    className={
-                      log.error_message
-                        ? 'bg-red-50'
-                        : log.result_count === 0
-                        ? 'bg-yellow-50'
-                        : log.result_count > 50
-                        ? 'bg-orange-50'
-                        : ''
-                    }
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                        {new Date(log.created_at).toLocaleString()}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {log.portal}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 max-w-md truncate">
-                      {log.query}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          log.result_count === 0
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : log.result_count > 50
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}
-                      >
-                        {log.result_count}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {log.execution_time_ms}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {log.error_message ? (
-                        <span className="inline-flex items-center text-red-600">
-                          <AlertTriangle className="w-4 h-4 mr-1" />
-                          Error
+                {logs.map((log) => {
+                  const rowClass = log.error_message
+                    ? 'bg-red-50 hover:bg-red-100'
+                    : log.result_count === 0
+                    ? 'bg-yellow-50 hover:bg-yellow-100'
+                    : log.result_count > 50
+                    ? 'bg-orange-50 hover:bg-orange-100'
+                    : 'hover:bg-gray-50';
+
+                  return (
+                    <tr
+                      key={log.id}
+                      onClick={() => setSelectedLog(log)}
+                      role="button"
+                      className={`cursor-pointer transition-colors ${rowClass}`}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Clock className="w-4 h-4 mr-2 text-gray-400" />
+                          {new Date(log.created_at).toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {log.portal}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 max-w-md truncate">
+                        {log.query}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            log.result_count === 0
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : log.result_count > 50
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-green-100 text-green-800'
+                          }`}
+                        >
+                          {log.result_count}
                         </span>
-                      ) : (
-                        <span className="text-green-600">Success</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {log.execution_time_ms}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {log.error_message ? (
+                          <span className="inline-flex items-center text-red-600">
+                            <AlertTriangle className="w-4 h-4 mr-1" />
+                            Error
+                          </span>
+                        ) : (
+                          <span className="text-green-600">Success</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {logs.length === 0 && (
@@ -217,6 +250,57 @@ export function Dashboard() {
             )}
           </div>
         </div>
+
+        {selectedLog && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
+            onClick={() => setSelectedLog(null)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-xl max-w-4xl w-full overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-6 py-4 border-b">
+                <div>
+                  <p className="text-sm text-gray-500">{new Date(selectedLog.created_at).toLocaleString()}</p>
+                  <h3 className="text-lg font-semibold text-gray-900">{selectedLog.query}</h3>
+                  <p className="text-sm text-gray-600">Portal: {selectedLog.portal}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedLog(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                  aria-label="Close request details"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4 p-6">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800 mb-2">Request payload</h4>
+                  <pre className="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto whitespace-pre-wrap text-gray-800">
+                    {JSON.stringify(requestPayload, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-800 mb-2">Response payload</h4>
+                  <pre className="bg-gray-100 rounded-lg p-4 text-sm overflow-x-auto whitespace-pre-wrap text-gray-800">
+                    {JSON.stringify(responsePayload, null, 2)}
+                  </pre>
+                </div>
+              </div>
+              <div className="px-6 pb-6 flex flex-wrap gap-3 text-sm text-gray-700">
+                <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full">Results: {selectedLog.result_count}</span>
+                <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full">Time: {selectedLog.execution_time_ms} ms</span>
+                {selectedLog.error_message && (
+                  <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full">{selectedLog.error_message}</span>
+                )}
+                {selectedLog.user_identifier && (
+                  <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full">User: {selectedLog.user_identifier}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
