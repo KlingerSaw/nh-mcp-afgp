@@ -337,7 +337,17 @@ async function handleMCP(req: Request, supabase: any) {
       user_identifier: 'openwebui',
     });
 
-    const formattedResult = formatMCPResultsJSON(data, portal, cleanQuery, executionTime, page, pageSize);
+    const formattedResult = formatMCPResultsJSON(
+      data,
+      portal,
+      query,           // Original query
+      cleanQuery,      // Clean query
+      optimizedQuery,  // Optimized query
+      categoryTitles,  // Extracted categories
+      executionTime,
+      page,
+      pageSize
+    );
 
     return new Response(JSON.stringify(formattedResult), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -425,15 +435,37 @@ function formatMCPResults(data: any, portal: string, query: string, executionTim
   return lines.join('\n');
 }
 
-function formatMCPResultsJSON(data: any, portal: string, query: string, executionTime: number, page: number, pageSize: number) {
+function formatMCPResultsJSON(
+  data: any,
+  portal: string,
+  originalQuery: string,
+  cleanQuery: string,
+  optimizedQuery: string,
+  extractedCategories: string[],
+  executionTime: number,
+  page: number,
+  pageSize: number
+) {
   const total = data.totalCount || 0;
   const publications = data.publications || [];
   const categoryCounts = data.categoryCounts || [];
 
+  // Calculate what was removed from the query
+  const removedFromQuery: string[] = [];
+  if (extractedCategories.length > 0) {
+    removedFromQuery.push(`Kategorier: ${extractedCategories.join(', ')}`);
+  }
+
   if (total === 0) {
     return {
       success: true,
-      query,
+      queryProcessing: {
+        original: originalQuery,
+        cleaned: cleanQuery,
+        optimized: optimizedQuery,
+        extractedCategories: extractedCategories,
+        removedFromQuery: removedFromQuery
+      },
       portal,
       totalCount: 0,
       results: [],
@@ -460,7 +492,13 @@ function formatMCPResultsJSON(data: any, portal: string, query: string, executio
 
   const response: any = {
     success: true,
-    query,
+    queryProcessing: {
+      original: originalQuery,
+      cleaned: cleanQuery,
+      optimized: optimizedQuery,
+      extractedCategories: extractedCategories,
+      removedFromQuery: removedFromQuery
+    },
     portal,
     totalCount: total,
     page,
@@ -883,7 +921,27 @@ async function handleOpenAPISpec(req: Request) {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean', example: true },
-                      query: { type: 'string', example: 'jordforurening' },
+                      queryProcessing: {
+                        type: 'object',
+                        description: 'Information about query processing and optimization',
+                        properties: {
+                          original: { type: 'string', example: 'jordforurening, kategori: Miljø', description: 'Original query from user' },
+                          cleaned: { type: 'string', example: 'jordforurening', description: 'Query after category extraction' },
+                          optimized: { type: 'string', example: 'jordforurening forurening jord', description: 'Query with synonyms and acronyms' },
+                          extractedCategories: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            example: ['Miljø'],
+                            description: 'Categories extracted from query'
+                          },
+                          removedFromQuery: {
+                            type: 'array',
+                            items: { type: 'string' },
+                            example: ['Kategorier: Miljø'],
+                            description: 'What was removed from the search string'
+                          }
+                        }
+                      },
                       portal: { type: 'string', example: 'mfkn.naevneneshus.dk' },
                       totalCount: { type: 'integer', example: 42 },
                       page: { type: 'integer', example: 1 },
