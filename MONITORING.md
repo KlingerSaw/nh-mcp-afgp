@@ -173,6 +173,37 @@ supabase
 
 ## 🚨 Common Issues
 
+### Issue: CORS Error in Browser Console ⚠️
+
+**Problem**: OpenWebUI får CORS fejl når den forsøger at hente OpenAPI spec
+
+**Symptomer**:
+```
+Access to fetch at 'https://...openapi.json' from origin 'http://localhost:3000'
+has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present
+```
+
+**Verificer CORS virker**:
+```bash
+# Test OPTIONS preflight request
+curl -X OPTIONS -i \
+  -H "Origin: http://localhost:3000" \
+  -H "Access-Control-Request-Method: GET" \
+  https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
+
+# Forventet output skal inkludere:
+# access-control-allow-origin: *
+# access-control-allow-methods: GET, POST, PUT, DELETE, OPTIONS
+# access-control-allow-headers: Content-Type, Authorization, X-Client-Info, Apikey
+```
+
+**Status**: ✅ CORS er korrekt konfigureret og verificeret
+- `Access-Control-Allow-Origin: *` (tillader alle origins)
+- `Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type, Authorization, X-Client-Info, Apikey`
+
+Hvis du stadig får CORS fejl, tjek OpenWebUI kører på korrekt URL/port.
+
 ### Issue: Auth Type = "none"
 **Problem**: Bearer token ikke sendt
 **Fix**: Tjek OpenWebUI External Tools config har Bearer token korrekt indtastet
