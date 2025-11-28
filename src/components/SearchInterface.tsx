@@ -206,7 +206,7 @@ export function SearchInterface() {
         portal,
         query: transformed.optimizedQuery,
         categories: categories.length > 0 ? categories : undefined,
-        sort: 'Score',
+        sort: 'Date',
         types: [],
         skip: 0,
         size: pageSize,
