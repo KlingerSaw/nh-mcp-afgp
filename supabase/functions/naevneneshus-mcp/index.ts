@@ -79,6 +79,71 @@ async function resolveCategoryIds(portal: string, categoryTitles: string[], supa
   }));
 }
 
+async function expandAcronyms(query: string, portal: string, supabase: any): Promise<string> {
+  const { data: acronyms } = await supabase
+    .from('portal_acronyms')
+    .select('acronym, full_term')
+    .eq('portal', portal);
+
+  if (!acronyms || acronyms.length === 0) {
+    return query;
+  }
+
+  let expandedQuery = query;
+  for (const { acronym, full_term } of acronyms) {
+    const regex = new RegExp(`\\b${acronym}\\b`, 'gi');
+    if (regex.test(expandedQuery)) {
+      expandedQuery = expandedQuery.replace(regex, `${acronym} ${full_term}`);
+    }
+  }
+
+  return expandedQuery;
+}
+
+async function addSynonyms(query: string, portal: string, supabase: any): Promise<string> {
+  const { data: synonyms } = await supabase
+    .from('portal_synonyms')
+    .select('term, synonyms')
+    .eq('portal', portal);
+
+  if (!synonyms || synonyms.length === 0) {
+    return query;
+  }
+
+  const words = query.toLowerCase().split(/\s+/);
+  const additions: string[] = [];
+
+  for (const { term, synonyms: syns } of synonyms) {
+    if (words.some(w => w.includes(term)) || words.includes(term)) {
+      additions.push(...syns);
+    }
+
+    for (const syn of syns) {
+      if (words.includes(syn)) {
+        additions.push(term);
+        additions.push(...syns.filter((s: string) => s !== syn));
+        break;
+      }
+    }
+  }
+
+  if (additions.length > 0) {
+    return `${query} ${[...new Set(additions)].join(' ')}`;
+  }
+
+  return query;
+}
+
+async function optimizeQuery(query: string, portal: string, supabase: any): Promise<string> {
+  let optimized = query;
+
+  optimized = await expandAcronyms(optimized, portal, supabase);
+
+  optimized = await addSynonyms(optimized, portal, supabase);
+
+  return optimized;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -95,7 +160,19 @@ Deno.serve(async (req: Request) => {
     const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (path.endsWith('/mcp') && req.method === 'POST') {
+    const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
+    if (mcpPortalMatch && req.method === 'POST') {
+      const portal = mcpPortalMatch[1];
+      const bodyText = await req.text();
+      const body = JSON.parse(bodyText);
+      body.portal = portal;
+      const newReq = new Request(req.url, {
+        method: req.method,
+        headers: req.headers,
+        body: JSON.stringify(body),
+      });
+      return await handleMCP(newReq, supabase);
+    } else if (path.endsWith('/mcp') && req.method === 'POST') {
       return await handleMCP(req, supabase);
     } else if (path.endsWith('/search') && req.method === 'POST') {
       return await handleSearch(req, supabase);
@@ -114,7 +191,7 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({
           status: 'healthy',
           timestamp: new Date().toISOString(),
-          version: '1.0.7',
+          version: '1.1.0',
           endpoints: ['/mcp', '/search', '/feed', '/publication', '/health', '/openapi.json']
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -171,10 +248,12 @@ async function handleMCP(req: Request, supabase: any) {
   const { cleanQuery, categoryTitles } = parseQueryWithCategories(query);
   const categories = await resolveCategoryIds(portal, categoryTitles, supabase);
 
+  const optimizedQuery = await optimizeQuery(cleanQuery, portal, supabase);
+
   try {
     const apiUrl = `https://${portal}/api/Search`;
     const payload = {
-      query: cleanQuery,
+      query: optimizedQuery,
       categories: categories.length > 0 ? categories : undefined,
       parameters: {},
       sort: 1,
@@ -499,16 +578,113 @@ async function handlePortals() {
   }
 }
 
-function handleOpenAPISpec(req: Request) {
+async function handleOpenAPISpec(req: Request) {
   const url = new URL(req.url);
   const baseUrl = `${url.protocol}//${url.host}${url.pathname.replace('/openapi.json', '')}`;
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  const { data: portals } = await supabase
+    .from('portal_metadata')
+    .select('portal, name, domain_focus')
+    .order('portal');
+
+  const paths: any = {};
+
+  if (portals && portals.length > 0) {
+    for (const portalMeta of portals) {
+      const { data: categories } = await supabase
+        .from('site_categories')
+        .select('category_title')
+        .eq('portal', portalMeta.portal)
+        .limit(10);
+
+      const { data: legalAreas } = await supabase
+        .from('legal_areas')
+        .select('area_name')
+        .eq('portal', portalMeta.portal)
+        .limit(10);
+
+      const { data: acronyms } = await supabase
+        .from('portal_acronyms')
+        .select('acronym, full_term')
+        .eq('portal', portalMeta.portal)
+        .limit(5);
+
+      const operationId = `search_${portalMeta.portal.replace(/[^a-z0-9]/gi, '_')}`;
+      const categoryList = categories?.map(c => c.category_title).join(', ') || '';
+      const legalAreaList = legalAreas?.map(a => a.area_name).join(', ') || '';
+      const acronymList = acronyms?.map(a => `${a.acronym} (${a.full_term})`).join(', ') || '';
+
+      let description = `Søg i ${portalMeta.name || portalMeta.portal}`;
+      if (legalAreaList) {
+        description += `\n\nLovområder: ${legalAreaList}`;
+      }
+      if (categoryList) {
+        description += `\n\nTop kategorier: ${categoryList}`;
+      }
+      if (acronymList) {
+        description += `\n\nAlmindelige akronymer: ${acronymList}`;
+      }
+
+      paths[`/mcp/${portalMeta.portal}`] = {
+        post: {
+          summary: `Søg i ${portalMeta.name || portalMeta.portal}`,
+          description,
+          operationId,
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['query'],
+                  properties: {
+                    query: {
+                      type: 'string',
+                      description: 'Søgeord på dansk. Systemet ekspanderer automatisk akronymer og synonymer.',
+                    },
+                    page: {
+                      type: 'integer',
+                      description: 'Side nummer (standard: 1)',
+                      default: 1,
+                    },
+                    pageSize: {
+                      type: 'integer',
+                      description: 'Antal resultater per side (standard: 5)',
+                      default: 5,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Søgning gennemført',
+              content: {
+                'text/plain': {
+                  schema: {
+                    type: 'string',
+                    description: 'Formateret tekst med søgeresultater',
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+    }
+  }
 
   const spec = {
     openapi: '3.0.0',
     info: {
-      title: 'N\u00e6vneneshus Search API',
-      version: '1.0.7',
-      description: 'Search Danish administrative rulings across multiple portals including Milj\u00f8- og F\u00f8devareklagen\u00e6vnet, Ankestyrelsen, Erhvervsklagen\u00e6vnet, and Patientklagen\u00e6vnet.',
+      title: 'Nævneneshus Search API - Portal-specifik',
+      version: '1.1.0',
+      description: 'Søg i danske administrative afgørelser på tværs af flere portaler. Hvert portal har sit eget endpoint med optimeret søgning baseret på lovområder, kategorier og akronymer.',
     },
     servers: [
       {
@@ -517,6 +693,7 @@ function handleOpenAPISpec(req: Request) {
       },
     ],
     paths: {
+      ...paths,
       '/search': {
         post: {
           summary: 'Search publications',
