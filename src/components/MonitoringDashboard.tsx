@@ -245,31 +245,7 @@ export function MonitoringDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2">
-              <Database className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-medium text-slate-600">Total Connections</span>
-            </div>
-            <p className="text-3xl font-bold text-slate-900">{stats.totalConnections}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              <span className="text-sm font-medium text-slate-600">Successful</span>
-            </div>
-            <p className="text-3xl font-bold text-green-600">{stats.successfulConnections}</p>
-          </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
-            <div className="flex items-center gap-3 mb-2">
-              <Activity className="w-5 h-5 text-purple-600" />
-              <span className="text-sm font-medium text-slate-600">Tools Discovered</span>
-            </div>
-            <p className="text-3xl font-bold text-purple-600">{stats.toolsDiscovered}</p>
-          </div>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-2">
               <Search className="w-5 h-5 text-orange-600" />
