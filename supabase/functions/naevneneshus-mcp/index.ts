@@ -32,157 +32,46 @@ interface PublicationRequest {
   id: string;
 }
 
-interface SiteSettingsRequest {
-  portal: string;
-}
-
-const DEFAULT_PORTALS = [
-  'mfkn.naevneneshus.dk',
-  'aen.naevneneshus.dk',
-  'ekn.naevneneshus.dk',
-  'pn.naevneneshus.dk',
-];
-
-function parseQueryWithCategories(queryString: string): { cleanQuery: string; categoryTitles: string[] } {
-  const categoryRegex = /,?\s*kategori:\s*([^,\n]+)/gi;
-  const categoryTitles: string[] = [];
-  let match;
-
-  while ((match = categoryRegex.exec(queryString)) !== null) {
-    categoryTitles.push(match[1].trim());
-  }
-
-  let cleanQuery = queryString.replace(categoryRegex, '').trim();
-
-  cleanQuery = cleanQuery.replace(/\s+(AND|OR)\s*$/i, '').trim();
-  cleanQuery = cleanQuery.replace(/^\s*(AND|OR)\s+/i, '').trim();
-
-  cleanQuery = cleanQuery.replace(/,\s*$/, '').trim();
-  cleanQuery = cleanQuery.replace(/^\s*,/, '').trim();
-
-  cleanQuery = cleanQuery.replace(/\s+/g, ' ').trim();
-
-  return { cleanQuery, categoryTitles };
-}
-
-async function resolveCategoryIds(portal: string, categoryTitles: string[], supabase: any): Promise<CategoryFilter[]> {
-  if (categoryTitles.length === 0) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from('site_categories')
-    .select('category_id, category_title')
-    .eq('portal', portal)
-    .in('category_title', categoryTitles);
-
-  if (error || !data) {
-    console.error('Error fetching categories:', error);
-    return [];
-  }
-
-  return data.map((cat: any) => ({
-    id: cat.category_id,
-    title: cat.category_title,
-  }));
-}
-
-async function expandAcronyms(query: string, portal: string, supabase: any): Promise<string> {
-  const { data: acronyms } = await supabase
-    .from('portal_acronyms')
-    .select('acronym, full_term')
-    .eq('portal', portal);
-
-  if (!acronyms || acronyms.length === 0) {
-    return query;
-  }
-
-  let expandedQuery = query;
-  for (const { acronym, full_term } of acronyms) {
-    const regex = new RegExp(`\\b${acronym}\\b`, 'gi');
-    if (regex.test(expandedQuery)) {
-      expandedQuery = expandedQuery.replace(regex, `${acronym} ${full_term}`);
-    }
-  }
-
-  return expandedQuery;
-}
-
-async function addSynonyms(query: string, portal: string, supabase: any): Promise<string> {
-  const { data: synonyms } = await supabase
-    .from('portal_synonyms')
-    .select('term, synonyms')
-    .eq('portal', portal);
-
-  if (!synonyms || synonyms.length === 0) {
-    return query;
-  }
-
-  const words = query.toLowerCase().split(/\s+/);
-  const additions: string[] = [];
-
-  for (const { term, synonyms: syns } of synonyms) {
-    if (words.some(w => w.includes(term)) || words.includes(term)) {
-      additions.push(...syns);
-    }
-
-    for (const syn of syns) {
-      if (words.includes(syn)) {
-        additions.push(term);
-        additions.push(...syns.filter((s: string) => s !== syn));
-        break;
-      }
-    }
-  }
-
-  if (additions.length > 0) {
-    return `${query} ${[...new Set(additions)].join(' ')}`;
-  }
-
-  return query;
-}
-
-async function optimizeQuery(query: string, portal: string, supabase: any): Promise<string> {
-  let optimized = query;
-
-  optimized = await expandAcronyms(optimized, portal, supabase);
-
-  optimized = await addSynonyms(optimized, portal, supabase);
-
-  return optimized;
+function generateRequestId(): string {
+  return Math.random().toString(36).substring(2, 15);
 }
 
 Deno.serve(async (req: Request) => {
-  const requestId = crypto.randomUUID().substring(0, 8);
-  console.log(`\n[${requestId}] 📥 INCOMING REQUEST`);
-  console.log(`[${requestId}]   Method: ${req.method}`);
-  console.log(`[${requestId}]   URL: ${req.url}`);
-  console.log(`[${requestId}]   Time: ${new Date().toISOString()}`);
+  const requestId = generateRequestId();
+  const method = req.method;
+  const url = new URL(req.url);
+  const path = url.pathname;
 
-  if (req.method === 'OPTIONS') {
-    console.log(`[${requestId}] ✅ CORS preflight handled`);
+  console.log(`[${requestId}] 📥 INCOMING REQUEST`);
+  console.log(`[${requestId}]   Method: ${method}`);
+  console.log(`[${requestId}]   Path: ${path}`);
+  console.log(`[${requestId}]   Auth: ${req.headers.get('authorization') ? 'present' : 'missing'}`);
+
+  if (method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
       headers: corsHeaders,
     });
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      persistSession: false,
+    },
+  });
+
   try {
-    const url = new URL(req.url);
-    const path = url.pathname;
-    console.log(`[${requestId}]   Path: ${path}`);
-
-    const authHeader = req.headers.get('authorization');
-    if (authHeader) {
-      console.log(`[${requestId}]   Auth: Bearer token present (${authHeader.length} chars)`);
-    } else {
-      console.log(`[${requestId}]   Auth: No authorization header`);
-    }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
     const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
     if (mcpPortalMatch && req.method === 'POST') {
       const portal = mcpPortalMatch[1];
@@ -538,22 +427,39 @@ async function handleSearch(req: Request, supabase: any) {
     );
   }
 
-  const { portal, query, categories = [], sort = 'Score', types = [], skip = 0, size = 10, userIdentifier, originalQuery } = body;
+  const {
+    portal,
+    query,
+    categories = [],
+    sort = '1',
+    types = [],
+    skip = 0,
+    size = 10,
+    userIdentifier = 'anonymous',
+    originalQuery = query
+  } = body;
 
   if (!portal || !query) {
     return new Response(
-      JSON.stringify({ error: 'Portal and query are required' }),
+      JSON.stringify({ error: 'portal and query are required' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   try {
     const apiUrl = `https://${portal}/api/Search`;
+
+    const categoryMap = categories.length > 0 ? categories.map((c) => ({
+      id: c.id,
+      title: c.title,
+    })) : undefined;
+
     const payload = {
-      categories,
       query,
-      sort,
-      types,
+      categories: categoryMap,
+      parameters: {},
+      sort: parseInt(sort),
+      types: types.length > 0 ? types : undefined,
       skip,
       size,
     };
@@ -574,30 +480,31 @@ async function handleSearch(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query: originalQuery || query,
-      filters: { categories, sort, types },
+      query: originalQuery,
+      filters: { sort, categories: categories.map(c => c.title), types },
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: userIdentifier,
     });
 
-    return new Response(
-      JSON.stringify({
-        ...data,
-        meta: {
-          executionTime,
-          portal,
-        },
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    const responseData = {
+      ...data,
+      meta: {
+        executionTime,
+        portal,
+      },
+    };
+
+    return new Response(JSON.stringify(responseData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error) {
     const executionTime = Date.now() - startTime;
 
     await supabase.from('query_logs').insert({
       portal,
-      query: originalQuery || query,
-      filters: { categories, sort, types },
+      query: originalQuery,
+      filters: { sort, categories: categories.map(c => c.title), types },
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,
@@ -612,6 +519,7 @@ async function handleSearch(req: Request, supabase: any) {
 }
 
 async function handleFeed(req: Request, supabase: any) {
+  const startTime = Date.now();
   let body: FeedRequest;
 
   try {
@@ -627,26 +535,134 @@ async function handleFeed(req: Request, supabase: any) {
 
   if (!portal) {
     return new Response(
-      JSON.stringify({ error: 'Portal is required' }),
+      JSON.stringify({ error: 'portal is required' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   try {
     const apiUrl = `https://${portal}/api/Feed`;
-    const response = await fetch(apiUrl);
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}: ${response.statusText}`);
     }
 
     const data = await response.json();
+    const executionTime = Date.now() - startTime;
+
+    await supabase.from('connection_logs').insert({
+      portal,
+      endpoint: '/api/Feed',
+      response_time_ms: executionTime,
+      status_code: 200,
+      success: true,
+    });
+
+    const responseData = {
+      ...data,
+      meta: {
+        executionTime,
+        portal,
+      },
+    };
+
+    return new Response(JSON.stringify(responseData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+
+    await supabase.from('connection_logs').insert({
+      portal,
+      endpoint: '/api/Feed',
+      response_time_ms: executionTime,
+      status_code: 500,
+      success: false,
+      error_message: error.message,
+    });
 
     return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
+}
+
+async function handlePublication(req: Request, supabase: any) {
+  const startTime = Date.now();
+  let body: PublicationRequest;
+
+  try {
+    body = await req.json();
   } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const { portal, id } = body;
+
+  if (!portal || !id) {
+    return new Response(
+      JSON.stringify({ error: 'portal and id are required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    const apiUrl = `https://${portal}/api/Publication`;
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const executionTime = Date.now() - startTime;
+
+    await supabase.from('connection_logs').insert({
+      portal,
+      endpoint: '/api/Publication',
+      response_time_ms: executionTime,
+      status_code: 200,
+      success: true,
+    });
+
+    const responseData = {
+      ...data,
+      meta: {
+        executionTime,
+        portal,
+      },
+    };
+
+    return new Response(JSON.stringify(responseData), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    const executionTime = Date.now() - startTime;
+
+    await supabase.from('connection_logs').insert({
+      portal,
+      endpoint: '/api/Publication',
+      response_time_ms: executionTime,
+      status_code: 500,
+      success: false,
+      error_message: error.message,
+    });
+
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -655,7 +671,8 @@ async function handleFeed(req: Request, supabase: any) {
 }
 
 async function handleSiteSettings(req: Request) {
-  let body: SiteSettingsRequest;
+  const startTime = Date.now();
+  let body: { portal: string };
 
   try {
     body = await req.json();
@@ -670,24 +687,26 @@ async function handleSiteSettings(req: Request) {
 
   if (!portal) {
     return new Response(
-      JSON.stringify({ error: 'Portal is required' }),
+      JSON.stringify({ error: 'portal is required' }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   try {
-    const response = await fetch(`https://${portal}/api/SiteSettings`);
+    const apiUrl = `https://${portal}/api/SiteSettings`;
+    const response = await fetch(apiUrl);
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}: ${response.statusText}`);
     }
 
-    const settings = await response.json();
+    const data = await response.json();
+    const executionTime = Date.now() - startTime;
 
     return new Response(
       JSON.stringify({
-        portal,
-        settings,
+        ...data,
+        meta: { executionTime, portal },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -700,72 +719,142 @@ async function handleSiteSettings(req: Request) {
 }
 
 async function handlePortals() {
-  try {
-    const response = await fetch('https://naevneneshus.dk/afgoerelsesportaler/');
+  const portals = [
+    'fkn.naevneneshus.dk',
+    'pkn.naevneneshus.dk',
+    'mfkn.naevneneshus.dk',
+    'dkbb.naevneneshus.dk',
+    'dnfe.naevneneshus.dk',
+    'klfu.naevneneshus.dk',
+    'tele.naevneneshus.dk',
+    'rn.naevneneshus.dk',
+    'apv.naevneneshus.dk',
+    'tvist.naevneneshus.dk',
+    'ean.naevneneshus.dk',
+    'byf.naevneneshus.dk',
+    'ekn.naevneneshus.dk',
+  ];
 
-    if (!response.ok) {
-      throw new Error(`Portal page returned ${response.status}`);
-    }
-
-    const html = await response.text();
-    const matches = new Set<string>();
-    const regex = /https?:\/\/([\w.-]+\.naevneneshus\.dk)/gi;
-    let match;
-
-    while ((match = regex.exec(html)) !== null) {
-      matches.add(match[1]);
-    }
-
-    const portals = Array.from(matches);
-
-    return new Response(
-      JSON.stringify({ portals: portals.length > 0 ? portals : DEFAULT_PORTALS }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Failed to fetch portals', error);
-    return new Response(
-      JSON.stringify({ portals: DEFAULT_PORTALS, error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
+  return new Response(
+    JSON.stringify({ portals }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 
-async function handleOpenAPISpec(req: Request) {
-  try {
-    console.log('=====================================');
-    console.log('🔍 OPENAPI SPEC REQUEST STARTED');
-    console.log('=====================================');
-    console.log('Timestamp:', new Date().toISOString());
+function parseQueryWithCategories(query: string): { cleanQuery: string; categoryTitles: string[] } {
+  const categoryPattern = /,?\s*kategori[er]*:\s*([^,]+)/gi;
+  const categoryTitles: string[] = [];
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
-    console.log('✅ Base URL:', baseUrl);
+  let match;
+  while ((match = categoryPattern.exec(query)) !== null) {
+    categoryTitles.push(match[1].trim());
+  }
 
-    const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    console.log('✅ Supabase Key Present:', supabaseKey ? 'YES (first 20 chars: ' + supabaseKey.substring(0, 20) + '...)' : 'NO');
+  const cleanQuery = query.replace(categoryPattern, '').trim();
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    console.log('✅ Supabase client created successfully');
+  return { cleanQuery, categoryTitles };
+}
 
-    const userAgent = req.headers.get('user-agent') || 'unknown';
-    const authHeader = req.headers.get('authorization') || 'none';
-    const authType = authHeader.startsWith('Bearer') ? 'Bearer' : authHeader === 'none' ? 'none' : 'other';
+async function resolveCategoryIds(
+  portal: string,
+  categoryTitles: string[],
+  supabase: any
+): Promise<CategoryFilter[]> {
+  if (categoryTitles.length === 0) return [];
 
-    console.log('');
-    console.log('📋 REQUEST HEADERS:');
-    console.log('  - User-Agent:', userAgent);
-    console.log('  - Authorization Type:', authType);
-    if (authType === 'Bearer' && authHeader !== 'none') {
-      const tokenPreview = authHeader.substring(0, 20) + '...';
-      console.log('  - Token Preview:', tokenPreview);
-      console.log('  - Token Length:', authHeader.length);
+  const { data, error } = await supabase
+    .from('site_categories')
+    .select('category_id, category_title')
+    .eq('portal', portal)
+    .in('category_title', categoryTitles);
+
+  if (error) {
+    console.error('Error resolving categories:', error);
+    return [];
+  }
+
+  return (data || []).map((row: any) => ({
+    id: row.category_id,
+    title: row.category_title,
+  }));
+}
+
+async function optimizeQuery(query: string, portal: string, supabase: any): Promise<string> {
+  const { data: synonyms } = await supabase
+    .from('query_synonyms')
+    .select('term, synonyms')
+    .eq('portal', portal);
+
+  const { data: acronyms } = await supabase
+    .from('portal_acronyms')
+    .select('acronym, full_term')
+    .eq('portal', portal);
+
+  let optimizedQuery = query;
+
+  if (acronyms && acronyms.length > 0) {
+    for (const acronym of acronyms) {
+      const regex = new RegExp(`\\b${acronym.acronym}\\b`, 'gi');
+      if (regex.test(optimizedQuery)) {
+        optimizedQuery += ` ${acronym.full_term}`;
+      }
     }
-    console.log('  - Content-Type:', req.headers.get('content-type') || 'not set');
-    console.log('  - Accept:', req.headers.get('accept') || 'not set');
-    console.log('  - Origin:', req.headers.get('origin') || 'not set');
-    console.log('  - Referer:', req.headers.get('referer') || 'not set');
+  }
 
+  if (synonyms && synonyms.length > 0) {
+    for (const synonym of synonyms) {
+      const regex = new RegExp(`\\b${synonym.term}\\b`, 'gi');
+      if (regex.test(optimizedQuery)) {
+        optimizedQuery += ` ${synonym.synonyms.join(' ')}`;
+      }
+    }
+  }
+
+  return optimizedQuery;
+}
+
+function handleOpenAPISpec(req: Request) {
+  console.log('');
+  console.log('=' .repeat(53));
+  console.log('🔍 OPENAPI SPEC REQUEST STARTED');
+  console.log('=' .repeat(53));
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+  console.log('');
+  console.log('✅ Base URL:', supabaseUrl);
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('❌ ERROR: Missing environment variables');
+    console.error('  - SUPABASE_URL:', supabaseUrl ? 'present' : 'MISSING');
+    console.error('  - SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? 'present' : 'MISSING');
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error: Missing environment variables' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const baseUrl = `${supabaseUrl}/functions/v1/naevneneshus-mcp`;
+  console.log('✅ Function base URL:', baseUrl);
+
+  console.log('');
+  console.log('📊 Creating Supabase client...');
+  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false },
+  });
+  console.log('✅ Supabase client created successfully');
+
+  const authHeader = req.headers.get('authorization');
+  console.log('');
+  console.log('🔐 Request Authentication:');
+  console.log('  - Authorization header:', authHeader ? 'present' : 'No authorization header');
+  if (authHeader) {
+    console.log('  - Header format:', authHeader.substring(0, 20) + '...');
+  }
+
+  (async () => {
     const headerObj: Record<string, string> = {};
     req.headers.forEach((value, key) => {
       if (!key.toLowerCase().includes('authorization') && !key.toLowerCase().includes('key')) {
@@ -1177,18 +1266,9 @@ async function handleOpenAPISpec(req: Request) {
                             id: { type: 'string' },
                             title: { type: 'string' },
                             date: { type: 'string' },
-                            categories: {
-                              type: 'array',
-                              items: { type: 'string' },
-                            },
-                            jnr: {
-                              type: 'array',
-                              items: { type: 'string' },
-                            },
-                            type: {
-                              type: 'string',
-                              enum: ['ruling', 'news'],
-                            },
+                            categories: { type: 'array', items: { type: 'string' } },
+                            jnr: { type: 'array', items: { type: 'string' } },
+                            type: { type: 'string', enum: ['ruling', 'news'] },
                           },
                         },
                       },
@@ -1294,90 +1374,6 @@ async function handleOpenAPISpec(req: Request) {
           },
         },
       },
-      '/publication': {
-        post: {
-          summary: 'Get publication details',
-          description: 'Retrieve a specific publication by portal and ID',
-          operationId: 'getPublication',
-          'x-openai-isConsequential': false,
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['portal', 'id'],
-                  properties: {
-                    portal: {
-                      type: 'string',
-                      description: 'Portal hostname',
-                      enum: [
-                        'fkn.naevneneshus.dk',
-                        'pkn.naevneneshus.dk',
-                        'mfkn.naevneneshus.dk',
-                        'dkbb.naevneneshus.dk',
-                        'dnfe.naevneneshus.dk',
-                        'klfu.naevneneshus.dk',
-                        'tele.naevneneshus.dk',
-                        'rn.naevneneshus.dk',
-                        'apv.naevneneshus.dk',
-                        'tvist.naevneneshus.dk',
-                        'ean.naevneneshus.dk',
-                        'byf.naevneneshus.dk',
-                        'ekn.naevneneshus.dk',
-                      ],
-                    },
-                    id: {
-                      type: 'string',
-                      description: 'Publication identifier from the portal API',
-                      example: '94b2f761-8b61-4f83-9c15-123456789abc',
-                    },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': {
-              description: 'Publication details',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    additionalProperties: true,
-                  },
-                },
-              },
-            },
-            '400': {
-              description: 'Missing portal or publication ID',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      error: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
-            '500': {
-              description: 'Server error when fetching publication',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      error: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
     },
     components: {
       securitySchemes: {
@@ -1397,91 +1393,14 @@ async function handleOpenAPISpec(req: Request) {
   console.log('✅ STEP 4: OpenAPI spec generation complete');
   console.log(`  - Portal-specific tools: ${toolsCount}`);
   console.log(`  - Total paths: ${Object.keys(spec.paths).length}`);
-  console.log(`  - Spec version: ${spec.info.version}`);
+  console.log('');
+  console.log('🎉 RETURNING OPENAPI SPEC TO CLIENT');
+  console.log(`  - Response size: ~${JSON.stringify(spec).length} bytes`);
+  console.log('=' .repeat(53));
+  console.log('');
+  })();
 
-    console.log('');
-    console.log('📝 STEP 5: Logging connection to database...');
-    try {
-      const logResult = await supabase.from('connection_logs').insert({
-        endpoint: '/openapi.json',
-        method: 'GET',
-        user_agent: userAgent,
-        auth_type: authType,
-        request_headers: headerObj,
-        tools_discovered: toolsCount,
-        success: true,
-      });
-
-      if (logResult.error) {
-        console.warn('⚠️  Warning: Failed to log connection:', logResult.error.message);
-      } else {
-        console.log('✅ Connection logged successfully');
-      }
-    } catch (logError) {
-      console.warn('⚠️  Warning: Exception logging connection:', logError);
-    }
-
-    console.log('');
-    console.log('🎉 RETURNING OPENAPI SPEC TO CLIENT');
-    console.log('  - Response size:', JSON.stringify(spec).length, 'bytes');
-    console.log('=====================================');
-
-    return new Response(JSON.stringify(spec, null, 2), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
-    console.error('');
-    console.error('❌❌❌ CRITICAL ERROR IN OPENAPI SPEC GENERATION ❌❌❌');
-    console.error('Error Type:', error.constructor.name);
-    console.error('Error Message:', error.message);
-    console.error('Error Stack:', error.stack);
-    console.error('=====================================');
-    return new Response(
-      JSON.stringify({ error: 'Failed to generate OpenAPI spec', details: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-async function handlePublication(req: Request, supabase: any) {
-  let body: PublicationRequest;
-
-  try {
-    body = await req.json();
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid JSON in request body' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const { portal, id } = body;
-
-  if (!portal || !id) {
-    return new Response(
-      JSON.stringify({ error: 'Portal and ID are required' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  try {
-    const apiUrl = `https://${portal}/api/Publication/${id}`;
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
-      throw new Error(`API returned ${response.status}: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-
-    return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
+  return new Response(JSON.stringify(spec), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
