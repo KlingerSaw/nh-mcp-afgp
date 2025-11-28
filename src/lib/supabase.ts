@@ -19,4 +19,6 @@ export interface QueryLog {
   error_message: string | null;
   created_at: string;
   user_identifier: string | null;
+  request_payload?: Record<string, any> | null;
+  response_payload?: Record<string, any> | null;
 }
