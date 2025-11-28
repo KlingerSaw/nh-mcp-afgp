@@ -220,7 +220,17 @@ async function handleMCP(req: Request, supabase: any) {
     await supabase.from('query_logs').insert({
       portal,
       query: cleanQuery,
-      filters: { sort: 1, categories: categoryTitles },
+      filters: {
+        sort: 1,
+        categories: categoryTitles,
+        queryProcessing: {
+          original: query,
+          cleaned: cleanQuery,
+          optimized: optimizedQuery,
+          extractedCategories: categoryTitles,
+          removedFromQuery: categoryTitles.length > 0 ? [`Kategorier: ${categoryTitles.join(', ')}`] : []
+        }
+      },
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: 'openwebui',
@@ -247,7 +257,17 @@ async function handleMCP(req: Request, supabase: any) {
     await supabase.from('query_logs').insert({
       portal,
       query: cleanQuery,
-      filters: { sort: 1, categories: categoryTitles },
+      filters: {
+        sort: 1,
+        categories: categoryTitles,
+        queryProcessing: {
+          original: query,
+          cleaned: cleanQuery,
+          optimized: optimizedQuery,
+          extractedCategories: categoryTitles,
+          removedFromQuery: categoryTitles.length > 0 ? [`Kategorier: ${categoryTitles.join(', ')}`] : []
+        }
+      },
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,

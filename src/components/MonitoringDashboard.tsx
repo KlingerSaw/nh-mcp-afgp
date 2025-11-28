@@ -19,6 +19,17 @@ interface QueryLog {
   id: string;
   portal: string;
   query: string;
+  filters: {
+    sort: number;
+    categories: string[];
+    queryProcessing?: {
+      original: string;
+      cleaned: string;
+      optimized: string;
+      extractedCategories: string[];
+      removedFromQuery: string[];
+    };
+  } | null;
   result_count: number;
   execution_time_ms: number;
   error_message: string | null;
@@ -47,6 +58,7 @@ export function MonitoringDashboard() {
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [expandedQueryId, setExpandedQueryId] = useState<string | null>(null);
 
   const fetchConnectionLogs = async () => {
     const { data, error } = await supabase
@@ -360,50 +372,139 @@ export function MonitoringDashboard() {
                   <p className="text-sm mt-1">Vent på tools bliver brugt</p>
                 </div>
               ) : (
-                queryLogs.map((log) => (
-                  <div key={log.id} className="p-4 hover:bg-slate-50 transition">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="font-medium text-slate-900 mb-1">
-                          "{log.query}"
+                queryLogs.map((log) => {
+                  const isExpanded = expandedQueryId === log.id;
+                  const queryProcessing = log.filters?.queryProcessing;
+
+                  return (
+                    <div key={log.id} className="border-b border-slate-200 last:border-b-0">
+                      <div
+                        className="p-4 hover:bg-slate-50 transition cursor-pointer"
+                        onClick={() => setExpandedQueryId(isExpanded ? null : log.id)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="font-medium text-slate-900 mb-1">
+                              "{log.query}"
+                            </div>
+                            <div className="text-sm text-slate-600">
+                              Portal: <span className="font-mono text-xs">{log.portal}</span>
+                            </div>
+                          </div>
+                          <span className="text-xs text-slate-500 ml-4">
+                            {formatRelativeTime(log.created_at)}
+                          </span>
                         </div>
-                        <div className="text-sm text-slate-600">
-                          Portal: <span className="font-mono text-xs">{log.portal}</span>
+
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className={`flex items-center gap-1 ${
+                            log.result_count > 0 ? 'text-green-600' : 'text-slate-600'
+                          }`}>
+                            <Database className="w-3 h-3" />
+                            {log.result_count} resultater
+                          </span>
+
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <Clock className="w-3 h-3" />
+                            {log.execution_time_ms}ms
+                          </span>
+
+                          {log.user_identifier && (
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <User className="w-3 h-3" />
+                              {log.user_identifier}
+                            </span>
+                          )}
+
+                          {queryProcessing && (
+                            <span className="text-xs text-blue-600 font-medium">
+                              Klik for detaljer →
+                            </span>
+                          )}
                         </div>
+
+                        {log.error_message && (
+                          <div className="text-red-600 text-xs bg-red-50 p-2 rounded mt-2">
+                            {log.error_message}
+                          </div>
+                        )}
                       </div>
-                      <span className="text-xs text-slate-500 ml-4">
-                        {formatRelativeTime(log.created_at)}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className={`flex items-center gap-1 ${
-                        log.result_count > 0 ? 'text-green-600' : 'text-slate-600'
-                      }`}>
-                        <Database className="w-3 h-3" />
-                        {log.result_count} resultater
-                      </span>
+                      {isExpanded && queryProcessing && (
+                        <div className="bg-slate-50 p-4 space-y-4 border-t border-slate-200">
+                          <div>
+                            <h4 className="text-lg font-semibold text-slate-900 mb-2">Search translation</h4>
+                            <p className="text-sm text-slate-600 mb-4">
+                              Query processing with category extraction, synonym expansion, and filler-word removal
+                            </p>
+                          </div>
 
-                      <span className="flex items-center gap-1 text-slate-600">
-                        <Clock className="w-3 h-3" />
-                        {log.execution_time_ms}ms
-                      </span>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white border border-slate-200 rounded-lg p-3">
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Original</p>
+                              <p className="text-sm text-slate-900 break-words font-medium">
+                                {queryProcessing.original}
+                              </p>
+                            </div>
 
-                      {log.user_identifier && (
-                        <span className="flex items-center gap-1 text-slate-600">
-                          <User className="w-3 h-3" />
-                          {log.user_identifier}
-                        </span>
+                            <div className="bg-white border border-slate-200 rounded-lg p-3">
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Optimized query</p>
+                              <p className="text-sm text-blue-800 font-mono break-words">
+                                {queryProcessing.optimized || 'N/A'}
+                              </p>
+                            </div>
+
+                            <div className="bg-white border border-slate-200 rounded-lg p-3">
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Removed from query</p>
+                              <p className="text-sm text-slate-900 break-words">
+                                {queryProcessing.removedFromQuery.length > 0
+                                  ? queryProcessing.removedFromQuery.join(', ')
+                                  : 'None'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {queryProcessing.extractedCategories.length > 0 && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                              <p className="text-xs text-blue-700 uppercase tracking-wide mb-1">Category detected</p>
+                              <p className="text-sm text-blue-900 font-medium">
+                                {queryProcessing.extractedCategories.join(', ')}
+                              </p>
+                              <p className="text-xs text-blue-700 mt-1">
+                                Categories were removed from the query and applied as filters automatically.
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Request details</p>
+                              <pre className="bg-slate-900 text-green-200 text-xs rounded-lg p-3 overflow-x-auto">
+                                {JSON.stringify({
+                                  portal: log.portal,
+                                  query: queryProcessing.optimized,
+                                  categories: log.filters?.categories || [],
+                                  sort: log.filters?.sort || 1
+                                }, null, 2)}
+                              </pre>
+                            </div>
+
+                            <div>
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Response summary</p>
+                              <pre className="bg-slate-900 text-blue-200 text-xs rounded-lg p-3 overflow-x-auto">
+                                {JSON.stringify({
+                                  result_count: log.result_count,
+                                  execution_time_ms: log.execution_time_ms,
+                                  error_message: log.error_message
+                                }, null, 2)}
+                              </pre>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
-
-                    {log.error_message && (
-                      <div className="text-red-600 text-xs bg-red-50 p-2 rounded mt-2">
-                        {log.error_message}
-                      </div>
-                    )}
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
