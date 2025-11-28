@@ -283,13 +283,6 @@ print(response.text)`;
             <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
               <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
               <div>
-                <div className="font-medium text-gray-900">mfkn.naevneneshus.dk</div>
-                <div className="text-sm text-gray-600">Miljø- og Fødevareklagenævnet</div>
-              </div>
-            </div>
-            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
-              <div>
                 <div className="font-medium text-gray-900">fkn.naevneneshus.dk</div>
                 <div className="text-sm text-gray-600">Forbrugerklagenævnet</div>
               </div>
@@ -304,15 +297,78 @@ print(response.text)`;
             <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
               <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
               <div>
-                <div className="font-medium text-gray-900">ekn.naevneneshus.dk</div>
-                <div className="text-sm text-gray-600">Energiklagenævnet</div>
+                <div className="font-medium text-gray-900">mfkn.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Miljø og Fødevareklagenævnet</div>
               </div>
             </div>
             <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
               <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
               <div>
-                <div className="font-medium text-gray-900">aen.naevneneshus.dk</div>
-                <div className="text-sm text-gray-600">Ansættelsesnævnet</div>
+                <div className="font-medium text-gray-900">dkbb.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Disciplinær- og klagenævnet for beskikkede bygningssagkyndige</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">dnfe.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Disciplinærnævnet for Ejendomsmæglere</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">klfu.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Klagenævnet for Udbud</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">tele.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Teleklagenævnet</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">rn.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Revisornævnet</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">apv.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Ankenævnet for Patenter og Varemærker</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">tvist.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Tvistighedsnævnet</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">ean.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Erhvervsankenævnet</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">byf.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Byfornyelsesnævnene</div>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
+              <div>
+                <div className="font-medium text-gray-900">ekn.naevneneshus.dk</div>
+                <div className="text-sm text-gray-600">Energiklagenævnet</div>
               </div>
             </div>
           </div>
