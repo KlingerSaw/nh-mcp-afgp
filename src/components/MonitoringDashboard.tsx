@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Activity, Database, Search, RefreshCw, CheckCircle, XCircle, Clock, User, Globe } from 'lucide-react';
+import { Activity, Database, Search, RefreshCw, CheckCircle, XCircle, Clock, User, Globe, AlertTriangle } from 'lucide-react';
 
 interface ConnectionLog {
   id: string;
@@ -49,6 +49,9 @@ interface Stats {
   totalQueries: number;
   averageExecutionTime: number;
   toolsDiscovered: number;
+  emptyResults: number;
+  largeResults: number;
+  errors: number;
 }
 
 export function MonitoringDashboard() {
@@ -60,6 +63,9 @@ export function MonitoringDashboard() {
     totalQueries: 0,
     averageExecutionTime: 0,
     toolsDiscovered: 0,
+    emptyResults: 0,
+    largeResults: 0,
+    errors: 0,
   });
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -97,7 +103,7 @@ export function MonitoringDashboard() {
 
     const { data: queries } = await supabase
       .from('query_logs')
-      .select('execution_time_ms, result_count');
+      .select('execution_time_ms, result_count, error_message');
 
     if (connections) {
       const successful = connections.filter(c => c.success).length;
@@ -113,10 +119,17 @@ export function MonitoringDashboard() {
 
     if (queries && queries.length > 0) {
       const avgTime = queries.reduce((sum, q) => sum + (q.execution_time_ms || 0), 0) / queries.length;
+      const emptyCount = queries.filter(q => q.result_count === 0 && !q.error_message).length;
+      const largeCount = queries.filter(q => q.result_count > 50).length;
+      const errorCount = queries.filter(q => q.error_message).length;
+
       setStats(prev => ({
         ...prev,
         totalQueries: queries.length,
         averageExecutionTime: Math.round(avgTime),
+        emptyResults: emptyCount,
+        largeResults: largeCount,
+        errors: errorCount,
       }));
     }
   };
@@ -245,7 +258,7 @@ export function MonitoringDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-2">
               <Search className="w-5 h-5 text-orange-600" />
@@ -260,6 +273,30 @@ export function MonitoringDashboard() {
               <span className="text-sm font-medium text-slate-600">Avg Response</span>
             </div>
             <p className="text-3xl font-bold text-indigo-600">{stats.averageExecutionTime}ms</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-600" />
+              <span className="text-sm font-medium text-slate-600">Empty Results</span>
+            </div>
+            <p className="text-3xl font-bold text-yellow-600">{stats.emptyResults}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <Search className="w-5 h-5 text-amber-600" />
+              <span className="text-sm font-medium text-slate-600">Large Results (&gt;50)</span>
+            </div>
+            <p className="text-3xl font-bold text-amber-600">{stats.largeResults}</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <span className="text-sm font-medium text-slate-600">Errors</span>
+            </div>
+            <p className="text-3xl font-bold text-red-600">{stats.errors}</p>
           </div>
         </div>
 
