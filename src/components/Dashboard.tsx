@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase, QueryLog } from '../lib/supabase';
-import { AlertTriangle, Activity, Clock, Search } from 'lucide-react';
+import { AlertTriangle, Activity, Clock, Search, Trash2 } from 'lucide-react';
 
 export function Dashboard() {
   const [logs, setLogs] = useState<QueryLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<QueryLog | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     emptyResults: 0,
@@ -59,6 +60,29 @@ export function Dashboard() {
     }
   }
 
+  async function deleteAllLogs() {
+    if (!confirm('Er du sikker på at du vil slette alle historiske logs? Dette kan ikke fortrydes.')) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('query_logs')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (error) throw error;
+
+      await loadLogs();
+    } catch (error) {
+      console.error('Error deleting logs:', error);
+      alert('Der opstod en fejl ved sletning af logs');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const alertLogs = logs.filter(
     log => (log.result_count === 0 && !log.error_message) || log.result_count > 50
   );
@@ -102,11 +126,21 @@ export function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Naevneneshus MCP Monitor
-          </h1>
-          <p className="text-gray-600">Query logs from the last 14 days</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Naevneneshus MCP Monitor
+            </h1>
+            <p className="text-gray-600">Query logs from the last 14 days</p>
+          </div>
+          <button
+            onClick={deleteAllLogs}
+            disabled={deleting || logs.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+          >
+            <Trash2 className="w-5 h-5" />
+            {deleting ? 'Sletter...' : 'Slet alle logs'}
+          </button>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
