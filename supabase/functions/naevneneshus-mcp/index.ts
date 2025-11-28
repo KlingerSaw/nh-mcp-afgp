@@ -180,17 +180,52 @@ async function handleMCP(req: Request, supabase: any) {
     );
   }
 
-  const { cleanQuery, categoryTitles } = parseQueryWithCategories(query);
-  const categories = await resolveCategoryIds(portal, categoryTitles, supabase);
+  // Step 1: Parse explicit "kategori:" patterns
+  const { cleanQuery: queryAfterExplicitCategories, categoryTitles: explicitCategories } = parseQueryWithCategories(query);
+
+  // Step 2: Try to resolve category from query aliases (fuzzy matching)
+  let workingQuery = queryAfterExplicitCategories;
+  const categories: CategoryFilter[] = [];
+  const allCategoryTitles: string[] = [...explicitCategories];
+  let matchedAlias: string | null = null;
+
+  const aliasMatch = await resolveCategoryFromQueryAlias(workingQuery, portal, supabase);
+  if (aliasMatch) {
+    categories.push(aliasMatch.category);
+    allCategoryTitles.push(aliasMatch.category.title);
+    matchedAlias = aliasMatch.matchedAlias;
+    workingQuery = removeMatchedAliasFromQuery(workingQuery, aliasMatch.matchedAlias);
+  }
+
+  // Also resolve explicit categories
+  if (explicitCategories.length > 0) {
+    const explicitCats = await resolveCategoryIds(portal, explicitCategories, supabase);
+    categories.push(...explicitCats);
+  }
 
   console.log('Original query:', query);
-  console.log('Clean query:', cleanQuery);
-  console.log('Category titles:', categoryTitles);
+  console.log('After explicit category extraction:', queryAfterExplicitCategories);
+  console.log('After alias removal:', workingQuery);
+  console.log('All category titles:', allCategoryTitles);
   console.log('Resolved categories:', categories);
 
-  const optimizedQuery = await optimizeQuery(cleanQuery, portal, supabase);
+  // Step 3: Transform query (filler word removal, Elasticsearch syntax)
+  const { transformedQuery, elasticsearchQuery, removedFillerWords } = transformQuery(workingQuery);
+
+  console.log('Transformed query:', transformedQuery);
+  console.log('Elasticsearch query:', elasticsearchQuery);
+  console.log('Removed filler words:', removedFillerWords);
+
+  // Step 4: Optimize query (synonyms, acronyms)
+  const { optimizedQuery, addedSynonyms, expandedAcronyms } = await optimizeQuery(
+    elasticsearchQuery,
+    portal,
+    supabase
+  );
 
   console.log('Optimized query:', optimizedQuery);
+  console.log('Added synonyms:', addedSynonyms);
+  console.log('Expanded acronyms:', expandedAcronyms);
 
   try {
     const apiUrl = `https://${portal}/api/Search`;
@@ -219,16 +254,22 @@ async function handleMCP(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query: cleanQuery,
+      query: workingQuery,
       filters: {
         sort: 1,
-        categories: categoryTitles,
+        categories: allCategoryTitles,
         queryProcessing: {
           original: query,
-          cleaned: cleanQuery,
-          optimized: optimizedQuery,
-          extractedCategories: categoryTitles,
-          removedFromQuery: categoryTitles.length > 0 ? [`Kategorier: ${categoryTitles.join(', ')}`] : []
+          afterExplicitCategories: queryAfterExplicitCategories,
+          afterAliasRemoval: workingQuery,
+          transformed: transformedQuery,
+          elasticsearch: elasticsearchQuery,
+          final: optimizedQuery,
+          extractedCategories: allCategoryTitles,
+          matchedAlias: matchedAlias,
+          removedFillerWords: removedFillerWords,
+          addedSynonyms: addedSynonyms,
+          expandedAcronyms: expandedAcronyms
         }
       },
       result_count: resultCount,
@@ -239,10 +280,17 @@ async function handleMCP(req: Request, supabase: any) {
     const formattedResult = formatMCPResultsJSON(
       data,
       portal,
-      query,           // Original query
-      cleanQuery,      // Clean query
-      optimizedQuery,  // Optimized query
-      categoryTitles,  // Extracted categories
+      query,
+      queryAfterExplicitCategories,
+      workingQuery,
+      transformedQuery,
+      elasticsearchQuery,
+      optimizedQuery,
+      allCategoryTitles,
+      matchedAlias,
+      removedFillerWords,
+      addedSynonyms,
+      expandedAcronyms,
       executionTime,
       page,
       pageSize
@@ -256,16 +304,22 @@ async function handleMCP(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query: cleanQuery,
+      query: workingQuery,
       filters: {
         sort: 1,
-        categories: categoryTitles,
+        categories: allCategoryTitles,
         queryProcessing: {
           original: query,
-          cleaned: cleanQuery,
-          optimized: optimizedQuery,
-          extractedCategories: categoryTitles,
-          removedFromQuery: categoryTitles.length > 0 ? [`Kategorier: ${categoryTitles.join(', ')}`] : []
+          afterExplicitCategories: queryAfterExplicitCategories,
+          afterAliasRemoval: workingQuery,
+          transformed: transformedQuery,
+          elasticsearch: elasticsearchQuery,
+          final: optimizedQuery,
+          extractedCategories: allCategoryTitles,
+          matchedAlias: matchedAlias,
+          removedFillerWords: removedFillerWords,
+          addedSynonyms: addedSynonyms,
+          expandedAcronyms: expandedAcronyms
         }
       },
       result_count: 0,
@@ -348,9 +402,16 @@ function formatMCPResultsJSON(
   data: any,
   portal: string,
   originalQuery: string,
-  cleanQuery: string,
-  optimizedQuery: string,
+  afterExplicitCategories: string,
+  afterAliasRemoval: string,
+  transformed: string,
+  elasticsearch: string,
+  final: string,
   extractedCategories: string[],
+  matchedAlias: string | null,
+  removedFillerWords: string[],
+  addedSynonyms: string[],
+  expandedAcronyms: Array<{ acronym: string; fullTerm: string }>,
   executionTime: number,
   page: number,
   pageSize: number
@@ -359,22 +420,24 @@ function formatMCPResultsJSON(
   const publications = data.publications || [];
   const categoryCounts = data.categoryCounts || [];
 
-  // Calculate what was removed from the query
-  const removedFromQuery: string[] = [];
-  if (extractedCategories.length > 0) {
-    removedFromQuery.push(`Kategorier: ${extractedCategories.join(', ')}`);
-  }
+  const queryProcessing = {
+    original: originalQuery,
+    afterExplicitCategories: afterExplicitCategories,
+    afterAliasRemoval: afterAliasRemoval,
+    transformed: transformed,
+    elasticsearch: elasticsearch,
+    final: final,
+    extractedCategories: extractedCategories,
+    matchedAlias: matchedAlias,
+    removedFillerWords: removedFillerWords,
+    addedSynonyms: addedSynonyms,
+    expandedAcronyms: expandedAcronyms
+  };
 
   if (total === 0) {
     return {
       success: true,
-      queryProcessing: {
-        original: originalQuery,
-        cleaned: cleanQuery,
-        optimized: optimizedQuery,
-        extractedCategories: extractedCategories,
-        removedFromQuery: removedFromQuery
-      },
+      queryProcessing,
       portal,
       totalCount: 0,
       results: [],
@@ -401,13 +464,7 @@ function formatMCPResultsJSON(
 
   const response: any = {
     success: true,
-    queryProcessing: {
-      original: originalQuery,
-      cleaned: cleanQuery,
-      optimized: optimizedQuery,
-      extractedCategories: extractedCategories,
-      removedFromQuery: removedFromQuery
-    },
+    queryProcessing,
     portal,
     totalCount: total,
     page,
@@ -761,6 +818,13 @@ async function handlePortals() {
   );
 }
 
+// Filler words that should be removed from queries
+const FILLER_WORDS = new Set([
+  'og', 'eller', 'i', 'på', 'for', 'af', 'at', 'der', 'det', 'den', 'de',
+  'en', 'et', 'som', 'med', 'til', 'the', 'a', 'an', 'ved', 'om',
+  'søgning', 'praksis', 'mbl', 'nbl', 'pl', 'hdl', 'rl', 'jfl', 'vl', 'sl'
+]);
+
 function parseQueryWithCategories(query: string): { cleanQuery: string; categoryTitles: string[] } {
   const categoryPattern = /,?\s*kategori[er]*:\s*([^,]+)/gi;
   const categoryTitles: string[] = [];
@@ -773,6 +837,121 @@ function parseQueryWithCategories(query: string): { cleanQuery: string; category
   const cleanQuery = query.replace(categoryPattern, '').trim();
 
   return { cleanQuery, categoryTitles };
+}
+
+function transformQuery(rawQuery: string): {
+  transformedQuery: string;
+  elasticsearchQuery: string;
+  removedFillerWords: string[];
+} {
+  const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
+  const tokens = cleanedQuery.match(/"[^"]+"|[^\s]+/g) || [];
+  const removedFillerWords: string[] = [];
+  const processed: string[] = [];
+  const seen = new Set<string>();
+
+  tokens.forEach((token) => {
+    const normalized = token.replace(/^["']|["']$/g, '');
+    const lower = normalized.toLowerCase();
+
+    // Remove boolean operators
+    if (['and', '&&', 'og', 'eller', 'or'].includes(lower)) {
+      removedFillerWords.push(normalized);
+      return;
+    }
+
+    // Remove filler words
+    if (FILLER_WORDS.has(lower)) {
+      removedFillerWords.push(normalized);
+      return;
+    }
+
+    // Remove patterns like "72-praksis"
+    if (normalized.match(/^\d+-\w+$/)) {
+      removedFillerWords.push(normalized);
+      return;
+    }
+
+    let processedToken: string;
+
+    // Handle special characters and numbers
+    if (normalized === '§') {
+      processedToken = `"§"`;
+    } else if (/^\d+$/.test(normalized)) {
+      processedToken = `"${normalized}"`;
+    } else if (normalized.includes(' ')) {
+      processedToken = `"${normalized}"`;
+    } else {
+      processedToken = normalized;
+    }
+
+    // Remove duplicates
+    if (!seen.has(processedToken)) {
+      seen.add(processedToken);
+      processed.push(processedToken);
+    }
+  });
+
+  // Build Elasticsearch query with AND operators
+  const elasticsearchParts: string[] = [];
+  for (let i = 0; i < processed.length; i++) {
+    if (i > 0) {
+      elasticsearchParts.push('AND');
+    }
+    elasticsearchParts.push(processed[i]);
+  }
+
+  const elasticsearchQuery = elasticsearchParts.join(' ');
+  const transformedQuery = processed.join(' ');
+
+  return {
+    transformedQuery,
+    elasticsearchQuery,
+    removedFillerWords,
+  };
+}
+
+async function resolveCategoryFromQueryAlias(
+  query: string,
+  portal: string,
+  supabase: any
+): Promise<{ category: CategoryFilter; matchedAlias: string } | null> {
+  const { data: categories, error } = await supabase
+    .from('site_categories')
+    .select('category_id, category_title, aliases')
+    .eq('portal', portal);
+
+  if (error || !categories || categories.length === 0) {
+    return null;
+  }
+
+  const queryUpper = query.toUpperCase();
+  const queryWords = query.split(/\s+/).map(w => w.toUpperCase());
+
+  for (const category of categories) {
+    const aliases = category.aliases || [];
+
+    for (const alias of aliases) {
+      const aliasUpper = alias.toUpperCase();
+
+      if (queryWords.includes(aliasUpper) || queryUpper.includes(aliasUpper)) {
+        return {
+          category: {
+            id: category.category_id,
+            title: category.category_title,
+          },
+          matchedAlias: alias,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function removeMatchedAliasFromQuery(query: string, matchedAlias: string): string {
+  const regex = new RegExp(`\\b${matchedAlias}\\b`, 'gi');
+  return query.replace(regex, '').replace(/\s+/g, ' ').trim();
 }
 
 async function resolveCategoryIds(
@@ -799,7 +978,15 @@ async function resolveCategoryIds(
   }));
 }
 
-async function optimizeQuery(query: string, portal: string, supabase: any): Promise<string> {
+async function optimizeQuery(
+  query: string,
+  portal: string,
+  supabase: any
+): Promise<{
+  optimizedQuery: string;
+  addedSynonyms: string[];
+  expandedAcronyms: Array<{ acronym: string; fullTerm: string }>;
+}> {
   const { data: synonyms } = await supabase
     .from('query_synonyms')
     .select('term, synonyms')
@@ -811,12 +998,18 @@ async function optimizeQuery(query: string, portal: string, supabase: any): Prom
     .eq('portal', portal);
 
   let optimizedQuery = query;
+  const addedSynonyms: string[] = [];
+  const expandedAcronyms: Array<{ acronym: string; fullTerm: string }> = [];
 
   if (acronyms && acronyms.length > 0) {
     for (const acronym of acronyms) {
       const regex = new RegExp(`\\b${acronym.acronym}\\b`, 'gi');
       if (regex.test(optimizedQuery)) {
         optimizedQuery += ` ${acronym.full_term}`;
+        expandedAcronyms.push({
+          acronym: acronym.acronym,
+          fullTerm: acronym.full_term,
+        });
       }
     }
   }
@@ -825,12 +1018,18 @@ async function optimizeQuery(query: string, portal: string, supabase: any): Prom
     for (const synonym of synonyms) {
       const regex = new RegExp(`\\b${synonym.term}\\b`, 'gi');
       if (regex.test(optimizedQuery)) {
-        optimizedQuery += ` ${synonym.synonyms.join(' ')}`;
+        const syns = synonym.synonyms.join(' ');
+        optimizedQuery += ` ${syns}`;
+        addedSynonyms.push(...synonym.synonyms);
       }
     }
   }
 
-  return optimizedQuery;
+  return {
+    optimizedQuery,
+    addedSynonyms,
+    expandedAcronyms,
+  };
 }
 
 function handleOpenAPISpec(req: Request) {

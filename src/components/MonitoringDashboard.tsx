@@ -24,10 +24,16 @@ interface QueryLog {
     categories: string[];
     queryProcessing?: {
       original: string;
-      cleaned: string;
-      optimized: string;
+      afterExplicitCategories?: string;
+      afterAliasRemoval?: string;
+      transformed?: string;
+      elasticsearch?: string;
+      final: string;
       extractedCategories: string[];
-      removedFromQuery: string[];
+      matchedAlias?: string | null;
+      removedFillerWords?: string[];
+      addedSynonyms?: string[];
+      expandedAcronyms?: Array<{ acronym: string; fullTerm: string }>;
     };
   } | null;
   result_count: number;
@@ -433,56 +439,107 @@ export function MonitoringDashboard() {
                       {isExpanded && queryProcessing && (
                         <div className="bg-slate-50 p-4 space-y-4 border-t border-slate-200">
                           <div>
-                            <h4 className="text-lg font-semibold text-slate-900 mb-2">Search translation</h4>
+                            <h4 className="text-lg font-semibold text-slate-900 mb-2">Query Processing Pipeline</h4>
                             <p className="text-sm text-slate-600 mb-4">
-                              Query processing with category extraction, synonym expansion, and filler-word removal
+                              Complete transformation chain: category extraction → filler word removal → Elasticsearch syntax → synonym/acronym expansion
                             </p>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="space-y-3">
                             <div className="bg-white border border-slate-200 rounded-lg p-3">
-                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Original</p>
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1 font-semibold">1. Original Query</p>
                               <p className="text-sm text-slate-900 break-words font-medium">
                                 {queryProcessing.original}
                               </p>
                             </div>
 
-                            <div className="bg-white border border-slate-200 rounded-lg p-3">
-                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Optimized query</p>
-                              <p className="text-sm text-blue-800 font-mono break-words">
-                                {queryProcessing.optimized || 'N/A'}
-                              </p>
-                            </div>
+                            {queryProcessing.afterExplicitCategories && queryProcessing.afterExplicitCategories !== queryProcessing.original && (
+                              <div className="bg-white border border-amber-200 rounded-lg p-3">
+                                <p className="text-xs text-amber-700 uppercase tracking-wide mb-1 font-semibold">2. After Explicit Category Extraction</p>
+                                <p className="text-sm text-slate-900 break-words">
+                                  {queryProcessing.afterExplicitCategories}
+                                </p>
+                                <p className="text-xs text-amber-600 mt-1">Removed explicit "kategori:" patterns</p>
+                              </div>
+                            )}
 
-                            <div className="bg-white border border-slate-200 rounded-lg p-3">
-                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Removed from query</p>
-                              <p className="text-sm text-slate-900 break-words">
-                                {queryProcessing.removedFromQuery.length > 0
-                                  ? queryProcessing.removedFromQuery.join(', ')
-                                  : 'None'}
+                            {queryProcessing.matchedAlias && queryProcessing.afterAliasRemoval && (
+                              <div className="bg-white border border-purple-200 rounded-lg p-3">
+                                <p className="text-xs text-purple-700 uppercase tracking-wide mb-1 font-semibold">3. After Category Alias Removal</p>
+                                <p className="text-sm text-slate-900 break-words">
+                                  {queryProcessing.afterAliasRemoval}
+                                </p>
+                                <p className="text-xs text-purple-600 mt-1">
+                                  Detected and removed alias: <span className="font-semibold">"{queryProcessing.matchedAlias}"</span>
+                                </p>
+                              </div>
+                            )}
+
+                            {queryProcessing.transformed && queryProcessing.removedFillerWords && queryProcessing.removedFillerWords.length > 0 && (
+                              <div className="bg-white border border-orange-200 rounded-lg p-3">
+                                <p className="text-xs text-orange-700 uppercase tracking-wide mb-1 font-semibold">4. After Filler Word Removal</p>
+                                <p className="text-sm text-slate-900 break-words">
+                                  {queryProcessing.transformed}
+                                </p>
+                                <p className="text-xs text-orange-600 mt-1">
+                                  Removed: {queryProcessing.removedFillerWords.join(', ')}
+                                </p>
+                              </div>
+                            )}
+
+                            {queryProcessing.elasticsearch && (
+                              <div className="bg-white border border-blue-200 rounded-lg p-3">
+                                <p className="text-xs text-blue-700 uppercase tracking-wide mb-1 font-semibold">5. Elasticsearch Query</p>
+                                <p className="text-sm text-blue-800 font-mono break-words">
+                                  {queryProcessing.elasticsearch}
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">Added AND operators and quotes around special characters</p>
+                              </div>
+                            )}
+
+                            <div className="bg-white border border-green-200 rounded-lg p-3">
+                              <p className="text-xs text-green-700 uppercase tracking-wide mb-1 font-semibold">6. Final Optimized Query</p>
+                              <p className="text-sm text-green-800 font-mono break-words">
+                                {queryProcessing.final}
                               </p>
+                              {(queryProcessing.expandedAcronyms && queryProcessing.expandedAcronyms.length > 0) || (queryProcessing.addedSynonyms && queryProcessing.addedSynonyms.length > 0) ? (
+                                <div className="mt-2 space-y-1">
+                                  {queryProcessing.expandedAcronyms && queryProcessing.expandedAcronyms.length > 0 && (
+                                    <p className="text-xs text-green-600">
+                                      Expanded acronyms: {queryProcessing.expandedAcronyms.map(a => `${a.acronym} → ${a.fullTerm}`).join(', ')}
+                                    </p>
+                                  )}
+                                  {queryProcessing.addedSynonyms && queryProcessing.addedSynonyms.length > 0 && (
+                                    <p className="text-xs text-green-600">
+                                      Added synonyms: {queryProcessing.addedSynonyms.join(', ')}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-green-600 mt-1">No additional expansions needed</p>
+                              )}
                             </div>
                           </div>
 
                           {queryProcessing.extractedCategories.length > 0 && (
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                              <p className="text-xs text-blue-700 uppercase tracking-wide mb-1">Category detected</p>
+                              <p className="text-xs text-blue-700 uppercase tracking-wide mb-1 font-semibold">Applied Category Filters</p>
                               <p className="text-sm text-blue-900 font-medium">
                                 {queryProcessing.extractedCategories.join(', ')}
                               </p>
                               <p className="text-xs text-blue-700 mt-1">
-                                Categories were removed from the query and applied as filters automatically.
+                                These categories were automatically detected and applied as filters
                               </p>
                             </div>
                           )}
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Request details</p>
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">API Request Payload</p>
                               <pre className="bg-slate-900 text-green-200 text-xs rounded-lg p-3 overflow-x-auto">
                                 {JSON.stringify({
                                   portal: log.portal,
-                                  query: queryProcessing.optimized,
+                                  query: queryProcessing.final,
                                   categories: log.filters?.categories || [],
                                   sort: log.filters?.sort || 1
                                 }, null, 2)}
@@ -490,7 +547,7 @@ export function MonitoringDashboard() {
                             </div>
 
                             <div>
-                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Response summary</p>
+                              <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">API Response Summary</p>
                               <pre className="bg-slate-900 text-blue-200 text-xs rounded-lg p-3 overflow-x-auto">
                                 {JSON.stringify({
                                   result_count: log.result_count,
