@@ -30,6 +30,17 @@ interface PublicationRequest {
   id: string;
 }
 
+interface SiteSettingsRequest {
+  portal: string;
+}
+
+const DEFAULT_PORTALS = [
+  'mfkn.naevneneshus.dk',
+  'aen.naevneneshus.dk',
+  'ekn.naevneneshus.dk',
+  'pn.naevneneshus.dk',
+];
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -52,6 +63,10 @@ Deno.serve(async (req: Request) => {
       return await handleFeed(req, supabase);
     } else if (path.endsWith('/publication') && req.method === 'POST') {
       return await handlePublication(req, supabase);
+    } else if (path.endsWith('/site-settings') && req.method === 'POST') {
+      return await handleSiteSettings(req);
+    } else if (path.endsWith('/portals') && req.method === 'GET') {
+      return await handlePortals();
     } else if (path.endsWith('/health') && req.method === 'GET') {
       return new Response(
         JSON.stringify({
@@ -70,6 +85,8 @@ Deno.serve(async (req: Request) => {
             { method: 'POST', path: '/search', description: 'Search publications' },
             { method: 'POST', path: '/feed', description: 'Get latest publications' },
             { method: 'POST', path: '/publication', description: 'Get specific publication' },
+            { method: 'POST', path: '/site-settings', description: 'Get portal SiteSettings with categories' },
+            { method: 'GET', path: '/portals', description: 'List available portals' },
             { method: 'GET', path: '/health', description: 'Health check' }
           ]
         }),
@@ -210,6 +227,83 @@ async function handleFeed(req: Request, supabase: any) {
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+async function handleSiteSettings(req: Request) {
+  let body: SiteSettingsRequest;
+
+  try {
+    body = await req.json();
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON in request body' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const { portal } = body;
+
+  if (!portal) {
+    return new Response(
+      JSON.stringify({ error: 'Portal is required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    const response = await fetch(`https://${portal}/api/SiteSettings`);
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const settings = await response.json();
+
+    return new Response(
+      JSON.stringify({
+        portal,
+        settings,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+async function handlePortals() {
+  try {
+    const response = await fetch('https://naevneneshus.dk/afgoerelsesportaler/');
+
+    if (!response.ok) {
+      throw new Error(`Portal page returned ${response.status}`);
+    }
+
+    const html = await response.text();
+    const matches = new Set<string>();
+    const regex = /https?:\/\/([\w.-]+\.naevneneshus\.dk)/gi;
+    let match;
+
+    while ((match = regex.exec(html)) !== null) {
+      matches.add(match[1]);
+    }
+
+    const portals = Array.from(matches);
+
+    return new Response(
+      JSON.stringify({ portals: portals.length > 0 ? portals : DEFAULT_PORTALS }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Failed to fetch portals', error);
+    return new Response(
+      JSON.stringify({ portals: DEFAULT_PORTALS, error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 }

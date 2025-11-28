@@ -1,8 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { mcpClient, SearchParams } from '../lib/mcpClient';
 import { Search, Loader2, ExternalLink } from 'lucide-react';
+import {
+  CategoryOption,
+  extractCategoriesFromSettings,
+  resolveCategoryFromQuery,
+} from '../lib/categoryMapper';
 
-const PORTALS = [
+const DEFAULT_PORTALS = [
   'mfkn.naevneneshus.dk',
   'aen.naevneneshus.dk',
   'ekn.naevneneshus.dk',
@@ -12,9 +17,11 @@ const PORTALS = [
 const PAGE_SIZE_OPTIONS = [10, 20, 30];
 
 export function SearchInterface() {
-  const [portal, setPortal] = useState(PORTALS[0]);
+  const [portals, setPortals] = useState<string[]>(DEFAULT_PORTALS);
+  const [portal, setPortal] = useState(DEFAULT_PORTALS[0]);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
+  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([]);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
@@ -28,6 +35,10 @@ export function SearchInterface() {
     optimizedQuery: string;
     removedFillerWords: string[];
   } | null>(null);
+  const [resolvedCategory, setResolvedCategory] = useState<
+    | { categoryId: string; categoryName: string; matchedAlias: string }
+    | null
+  >(null);
   const [requestPayload, setRequestPayload] = useState<string | null>(null);
   const [responsePayload, setResponsePayload] = useState<string | null>(null);
 
@@ -56,6 +67,40 @@ export function SearchInterface() {
       ]),
     []
   );
+
+  useEffect(() => {
+    async function loadPortals() {
+      try {
+        const { portals: fetchedPortals } = await mcpClient.getPortals();
+        if (Array.isArray(fetchedPortals) && fetchedPortals.length > 0) {
+          setPortals(fetchedPortals);
+          setPortal(fetchedPortals[0]);
+        }
+      } catch (err) {
+        console.error('Failed to load portals, using defaults', err);
+        setPortals(DEFAULT_PORTALS);
+        setPortal(DEFAULT_PORTALS[0]);
+      }
+    }
+
+    loadPortals();
+  }, []);
+
+  useEffect(() => {
+    async function loadCategories() {
+      if (!portal) return;
+      try {
+        const response = await mcpClient.getSiteSettings(portal);
+        const categories = extractCategoriesFromSettings(response.settings ?? response);
+        setCategoryOptions(categories);
+      } catch (err) {
+        console.error('Failed to load categories', err);
+        setCategoryOptions([]);
+      }
+    }
+
+    loadCategories();
+  }, [portal]);
 
   function transformQuery(rawQuery: string) {
     const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
@@ -133,16 +178,38 @@ export function SearchInterface() {
     setResults(null);
     setRequestPayload(null);
     setResponsePayload(null);
+    setResolvedCategory(null);
 
-    const transformed = transformQuery(cleanedQuery);
+    const filters: NonNullable<SearchParams['filters']> = {};
+    const explicitCategory = category.trim();
+
+    let workingQuery = cleanedQuery;
+
+    if (categoryOptions.length > 0) {
+      const match = resolveCategoryFromQuery(
+        cleanedQuery,
+        categoryOptions,
+        explicitCategory || undefined
+      );
+
+      if (match) {
+        filters.category = match.categoryId;
+        workingQuery = match.cleanedQuery || cleanedQuery;
+        setResolvedCategory({
+          categoryId: match.categoryId,
+          categoryName: match.categoryName,
+          matchedAlias: match.matchedAlias,
+        });
+      }
+    }
+
+    if (explicitCategory && !filters.category) {
+      filters.category = explicitCategory;
+    }
+
+    const transformed = transformQuery(workingQuery);
 
     try {
-      const filters: NonNullable<SearchParams['filters']> = {};
-
-      if (category.trim()) {
-        filters.category = category.trim();
-      }
-
       if (dateStart || dateEnd) {
         filters.dateRange = {
           ...(dateStart ? { start: dateStart } : {}),
@@ -194,7 +261,7 @@ export function SearchInterface() {
                 onChange={(e) => setPortal(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               >
-                {PORTALS.map((p) => (
+                {portals.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
@@ -280,12 +347,16 @@ export function SearchInterface() {
                   />
                 </div>
 
-                {(dateStart || dateEnd || category) && (
+                {(dateStart || dateEnd || category || resolvedCategory) && (
                   <div className="md:col-span-2 flex items-center justify-between bg-white border border-blue-100 rounded-lg px-4 py-3">
                     <div className="text-sm text-gray-700">
                       <p className="font-medium">Active filters</p>
                       <p className="text-gray-600">
-                        {category && <span className="mr-2">Category: {category}</span>}
+                        {(category || resolvedCategory) && (
+                          <span className="mr-2">
+                            Category: {category || resolvedCategory?.categoryName}
+                          </span>
+                        )}
                         {(dateStart || dateEnd) && (
                           <span>
                             Date: {dateStart || 'Any'} → {dateEnd || 'Any'}
@@ -299,6 +370,7 @@ export function SearchInterface() {
                         setCategory('');
                         setDateStart('');
                         setDateEnd('');
+                        setResolvedCategory(null);
                       }}
                       className="text-sm font-semibold text-blue-600 hover:text-blue-800"
                     >
@@ -360,6 +432,18 @@ export function SearchInterface() {
                       : 'None'}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {resolvedCategory && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-xs text-blue-700 uppercase tracking-wide">Category detected</p>
+                <p className="text-sm text-blue-900 font-medium">
+                  Matched "{resolvedCategory.matchedAlias}" → {resolvedCategory.categoryName} (ID: {resolvedCategory.categoryId})
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  We removed the matched word from the query and applied the category filter automatically.
+                </p>
               </div>
             )}
 
