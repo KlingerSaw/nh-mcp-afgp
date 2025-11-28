@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { mcpClient, SearchParams, CategoryFilter } from '../lib/mcpClient';
-import { Search, Loader2, ExternalLink } from 'lucide-react';
+import { Search, Loader2, ExternalLink, Copy, Check } from 'lucide-react';
 import { resolveCategoryFromQuery, removeMatchedAliasFromQuery, ResolvedCategory } from '../lib/categoryResolver';
 
 const DEFAULT_PORTALS = [
@@ -41,6 +41,7 @@ export function SearchInterface() {
   const [resolvedCategory, setResolvedCategory] = useState<ResolvedCategory | null>(null);
   const [requestPayload, setRequestPayload] = useState<string | null>(null);
   const [responsePayload, setResponsePayload] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const fillerWords = useMemo(
     () =>
@@ -225,16 +226,99 @@ export function SearchInterface() {
     }
   }
 
+  function copyToClipboard(text: string, field: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    });
+  }
+
+  const edgeFunctionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/naevneneshus-mcp`;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-3">
             Naevneneshus Search
           </h1>
           <p className="text-lg text-gray-600">
             Search across multiple Danish appeals boards
           </p>
+        </div>
+
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl shadow-lg p-8 mb-8 text-white">
+          <h2 className="text-2xl font-bold mb-4">Open WebUI Integration</h2>
+          <p className="mb-6 text-blue-50">
+            Connect this search tool to Open WebUI as an external function.
+          </p>
+
+          <div className="space-y-4">
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-semibold text-blue-100">Edge Function URL</label>
+                <button
+                  onClick={() => copyToClipboard(edgeFunctionUrl, 'url')}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md text-sm transition-colors"
+                >
+                  {copiedField === 'url' ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <code className="block bg-black/20 rounded px-3 py-2 text-sm font-mono break-all">
+                {edgeFunctionUrl}
+              </code>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-semibold text-blue-100">Authorization Token (Bearer)</label>
+                <button
+                  onClick={() => copyToClipboard(anonKey, 'token')}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md text-sm transition-colors"
+                >
+                  {copiedField === 'token' ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              <code className="block bg-black/20 rounded px-3 py-2 text-sm font-mono break-all">
+                {anonKey}
+              </code>
+            </div>
+
+            <div className="bg-blue-500/30 rounded-lg p-4">
+              <h3 className="font-semibold mb-2 flex items-center gap-2">
+                <ExternalLink className="w-4 h-4" />
+                Setup Instructions
+              </h3>
+              <ol className="text-sm text-blue-50 space-y-1 list-decimal list-inside">
+                <li>Go to Open WebUI Settings → Functions</li>
+                <li>Create a new external function</li>
+                <li>Paste the Edge Function URL above</li>
+                <li>Add the Authorization token as a Bearer token</li>
+                <li>Save and enable the function</li>
+              </ol>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
