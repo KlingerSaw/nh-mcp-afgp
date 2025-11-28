@@ -329,7 +329,7 @@ async function handleMCP(req: Request, supabase: any) {
     });
 
     return new Response(
-      JSON.stringify({ error: error.message, portal, query: cleanQuery }),
+      JSON.stringify({ error: error.message, portal, query: workingQuery }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
