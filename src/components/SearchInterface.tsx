@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { mcpClient, SearchParams } from '../lib/mcpClient';
 import { Search, Loader2, ExternalLink } from 'lucide-react';
 
@@ -22,6 +22,100 @@ export function SearchInterface() {
   const [results, setResults] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transformationDetails, setTransformationDetails] = useState<{
+    originalQuery: string;
+    cleanedQuery: string;
+    optimizedQuery: string;
+    removedFillerWords: string[];
+  } | null>(null);
+  const [requestPayload, setRequestPayload] = useState<string | null>(null);
+  const [responsePayload, setResponsePayload] = useState<string | null>(null);
+
+  const fillerWords = useMemo(
+    () =>
+      new Set([
+        'og',
+        'eller',
+        'i',
+        'på',
+        'for',
+        'af',
+        'at',
+        'der',
+        'det',
+        'den',
+        'de',
+        'en',
+        'et',
+        'som',
+        'med',
+        'til',
+        'the',
+        'a',
+        'an',
+      ]),
+    []
+  );
+
+  function transformQuery(rawQuery: string) {
+    const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
+    const tokens = cleanedQuery.match(/"[^"]+"|[^\s]+/g) || [];
+    const removedFillerWords: string[] = [];
+    const processed: string[] = [];
+
+    tokens.forEach((token) => {
+      const normalized = token.replace(/^["']|["']$/g, '');
+      const lower = normalized.toLowerCase();
+
+      if (['and', '&&', 'og'].includes(lower)) {
+        processed.push('AND');
+        return;
+      }
+
+      if (['or', '||', 'eller'].includes(lower)) {
+        processed.push('OR');
+        return;
+      }
+
+      if (fillerWords.has(lower)) {
+        removedFillerWords.push(normalized);
+        return;
+      }
+
+      const wildcarded = normalized.length >= 3 ? `%${normalized}%` : normalized;
+      const quoted = normalized.includes(' ') ? `"${normalized}"` : `"${wildcarded}"`;
+      processed.push(quoted);
+    });
+
+    const optimizedParts: string[] = [];
+    for (let i = 0; i < processed.length; i++) {
+      const current = processed[i];
+      const prev = processed[i - 1];
+
+      if (current === 'AND' || current === 'OR') {
+        optimizedParts.push(current);
+        continue;
+      }
+
+      if (i > 0 && prev !== 'AND' && prev !== 'OR') {
+        optimizedParts.push('AND');
+      }
+
+      optimizedParts.push(current);
+    }
+
+    const optimizedQuery = optimizedParts.join(' ');
+
+    const details = {
+      originalQuery: rawQuery,
+      cleanedQuery,
+      optimizedQuery,
+      removedFillerWords,
+    };
+
+    setTransformationDetails(details);
+    return details;
+  }
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -32,6 +126,10 @@ export function SearchInterface() {
     setLoading(true);
     setError(null);
     setResults(null);
+    setRequestPayload(null);
+    setResponsePayload(null);
+
+    const transformed = transformQuery(cleanedQuery);
 
     try {
       const filters: NonNullable<SearchParams['filters']> = {};
@@ -49,14 +147,18 @@ export function SearchInterface() {
 
       const params: SearchParams = {
         portal,
-        query: cleanedQuery,
+        query: transformed.optimizedQuery,
         page: 1,
         pageSize,
         ...(Object.keys(filters).length > 0 ? { filters } : {}),
+        originalQuery: cleanedQuery,
       };
+
+      setRequestPayload(JSON.stringify(params, null, 2));
 
       const data = await mcpClient.search(params);
       setResults(data);
+      setResponsePayload(JSON.stringify(data, null, 2));
     } catch (err: any) {
       setError(err.message || 'Search failed');
     } finally {
@@ -221,6 +323,64 @@ export function SearchInterface() {
             </button>
           </form>
         </div>
+
+        {(transformationDetails || requestPayload || responsePayload) && (
+          <div className="bg-white rounded-2xl shadow-lg p-6 mb-8 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Search translation</h3>
+                <p className="text-sm text-gray-600">
+                  We prepare your query for Elasticsearch (Boolean operators, quotes, wildcards, and filler-word removal)
+                </p>
+              </div>
+            </div>
+
+            {transformationDetails && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Original</p>
+                  <p className="text-sm text-gray-900 break-words">{transformationDetails.originalQuery}</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Optimized query</p>
+                  <p className="text-sm text-blue-800 font-mono break-words">
+                    {transformationDetails.optimizedQuery || 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Removed filler words</p>
+                  <p className="text-sm text-gray-900 break-words">
+                    {transformationDetails.removedFillerWords.length > 0
+                      ? transformationDetails.removedFillerWords.join(', ')
+                      : 'None'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {(requestPayload || responsePayload) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {requestPayload && (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Payload sent to API</p>
+                    <pre className="bg-gray-900 text-green-200 text-xs rounded-lg p-4 overflow-x-auto">
+                      {requestPayload}
+                    </pre>
+                  </div>
+                )}
+
+                {responsePayload && (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Payload returned from API</p>
+                    <pre className="bg-gray-900 text-blue-200 text-xs rounded-lg p-4 overflow-x-auto">
+                      {responsePayload}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">

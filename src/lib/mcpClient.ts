@@ -18,6 +18,7 @@ export interface SearchParams {
     };
   };
   userIdentifier?: string;
+  originalQuery?: string;
 }
 
 export interface SearchResult {
