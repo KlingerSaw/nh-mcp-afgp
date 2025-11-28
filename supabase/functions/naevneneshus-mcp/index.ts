@@ -1030,15 +1030,19 @@ async function handleOpenAPISpec(req: Request) {
   console.log(`✅ Generated OpenAPI spec with ${toolsCount} portal-specific tools`);
   console.log(`📊 Total paths: ${Object.keys(spec.paths).length}`);
 
-    await supabase.from('connection_logs').insert({
-      endpoint: '/openapi.json',
-      method: 'GET',
-      user_agent: userAgent,
-      auth_type: authType,
-      request_headers: headerObj,
-      tools_discovered: toolsCount,
-      success: true,
-    }).catch(err => console.error('Failed to log connection:', err));
+    try {
+      await supabase.from('connection_logs').insert({
+        endpoint: '/openapi.json',
+        method: 'GET',
+        user_agent: userAgent,
+        auth_type: authType,
+        request_headers: headerObj,
+        tools_discovered: toolsCount,
+        success: true,
+      });
+    } catch (logError) {
+      console.error('Failed to log connection:', logError);
+    }
 
     return new Response(JSON.stringify(spec, null, 2), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
