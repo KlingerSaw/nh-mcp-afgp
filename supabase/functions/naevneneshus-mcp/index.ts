@@ -6,30 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-interface CategoryFilter {
-  id: string;
-  title: string;
-}
-
 interface SearchRequest {
-  portal: string;
   query: string;
-  categories?: CategoryFilter[];
-  sort?: string;
-  types?: string[];
-  skip?: number;
-  size?: number;
-  userIdentifier?: string;
-  originalQuery?: string;
-}
-
-interface FeedRequest {
-  portal: string;
-}
-
-interface PublicationRequest {
-  portal: string;
-  id: string;
+  originalQuery: string;
+  page?: number;
+  pageSize?: number;
 }
 
 function generateRequestId(): string {
@@ -42,23 +23,16 @@ Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  console.log(`[${requestId}] =� INCOMING REQUEST`);
-  console.log(`[${requestId}]   Method: ${method}`);
-  console.log(`[${requestId}]   Path: ${path}`);
-  console.log(`[${requestId}]   Auth: ${req.headers.get('authorization') ? 'present' : 'missing'}`);
+  console.log(`[${requestId}] 📥 ${method} ${path}`);
 
   if (method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
     return new Response(
       JSON.stringify({ error: 'Server configuration error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -66,86 +40,42 @@ Deno.serve(async (req: Request) => {
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      persistSession: false,
-    },
+    auth: { persistSession: false },
   });
 
   try {
     const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
-    if (mcpPortalMatch && req.method === 'POST') {
+    if (mcpPortalMatch && method === 'POST') {
       const portal = mcpPortalMatch[1];
-      console.log(`<� Portal-specific tool called: ${portal}`);
-      console.log(`=� Full path: ${path}`);
-      console.log(`= Auth: ${req.headers.get('authorization') ? 'present' : 'missing'}`);
-
-      const bodyText = await req.text();
-      const body = JSON.parse(bodyText);
+      const body = await req.json();
       body.portal = portal;
-      const newReq = new Request(req.url, {
-        method: req.method,
-        headers: req.headers,
-        body: JSON.stringify(body),
-      });
-      return await handleMCP(newReq, supabase);
-    } else if (path.endsWith('/mcp') && req.method === 'POST') {
-      return await handleMCP(req, supabase);
-    } else if (path.endsWith('/search') && req.method === 'POST') {
-      return await handleSearch(req, supabase);
-    } else if (path.endsWith('/feed') && req.method === 'POST') {
-      return await handleFeed(req, supabase);
-    } else if (path.endsWith('/publication') && req.method === 'POST') {
-      return await handlePublication(req, supabase);
-    } else if (path.endsWith('/site-settings') && req.method === 'POST') {
-      return await handleSiteSettings(req);
-    } else if (path.endsWith('/portals') && req.method === 'GET') {
+      return await handleMCP(body, supabase);
+    } else if (path.endsWith('/portals') && method === 'GET') {
       return await handlePortals();
-    } else if (path.endsWith('/openapi.json') && req.method === 'GET') {
-      console.log(`[${requestId}] =� Routing to OpenAPI spec handler`);
-      return handleOpenAPISpec(req);
-    } else if ((path === '/naevneneshus-mcp' || path === '/naevneneshus-mcp/') && req.method === 'GET') {
-      console.log(`[${requestId}] <� Root endpoint accessed`);
+    } else if (path.endsWith('/openapi.json') && method === 'GET') {
+      return handleOpenAPISpec(req, supabase);
+    } else if ((path === '/naevneneshus-mcp' || path === '/naevneneshus-mcp/') && method === 'GET') {
       return new Response(
         JSON.stringify({
-          name: 'N�vneneshus Search API',
-          version: '1.5.0',
-          description: 'S�g i danske administrative afg�relser p� tv�rs af flere portaler',
+          name: 'Nævneneshus Search API',
+          version: '2.0.0',
+          description: 'Simplified search API - AI handles query optimization',
           endpoints: {
-            root: { path: '/', method: 'GET', description: 'API information' },
-            openapi: { path: '/openapi.json', method: 'GET', description: 'OpenAPI 3.0 specification' },
-            health: { path: '/health', method: 'GET', description: 'Health check' },
-            portals: { path: '/portals', method: 'GET', description: 'List available portals' },
-            portalSearch: { path: '/mcp/{portal}', method: 'POST', description: 'Search specific portal' }
-          },
-          documentation: `${supabaseUrl}/functions/v1/naevneneshus-mcp/openapi.json`
+            openapi: { path: '/openapi.json', method: 'GET' },
+            portals: { path: '/portals', method: 'GET' },
+            portalSearch: { path: '/mcp/{portal}', method: 'POST' }
+          }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
-    } else if (path.endsWith('/health') && req.method === 'GET') {
+    } else if (path.endsWith('/health') && method === 'GET') {
       return new Response(
-        JSON.stringify({
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          version: '1.5.0',
-          endpoints: ['/mcp', '/search', '/feed', '/publication', '/health', '/openapi.json']
-        }),
+        JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString(), version: '2.0.0' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
       return new Response(
-        JSON.stringify({
-          error: 'Not found',
-          availableEndpoints: [
-            { method: 'POST', path: '/mcp', description: 'MCP-compatible search (accepts query string, returns formatted text)' },
-            { method: 'POST', path: '/search', description: 'Search publications' },
-            { method: 'POST', path: '/feed', description: 'Get latest publications' },
-            { method: 'POST', path: '/publication', description: 'Get specific publication' },
-            { method: 'POST', path: '/site-settings', description: 'Get portal SiteSettings with categories' },
-            { method: 'GET', path: '/portals', description: 'List available portals' },
-            { method: 'GET', path: '/health', description: 'Health check' },
-            { method: 'GET', path: '/openapi.json', description: 'OpenAPI specification for Open WebUI integration' }
-          ]
-        }),
+        JSON.stringify({ error: 'Not found', path }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -158,80 +88,36 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-async function handleMCP(req: Request, supabase: any) {
+async function handleMCP(body: SearchRequest & { portal: string }, supabase: any) {
   const startTime = Date.now();
-  let body: { query: string; portal?: string; page?: number; pageSize?: number };
+  const { query, originalQuery, portal, page = 1, pageSize = 5 } = body;
 
-  try {
-    body = await req.json();
-  } catch (error) {
+  if (!query || !originalQuery) {
     return new Response(
-      JSON.stringify({ error: 'Invalid JSON in request body', expected: { query: 'your search', portal: 'mfkn.naevneneshus.dk' } }),
+      JSON.stringify({
+        error: 'Both query and originalQuery are required',
+        example: {
+          query: 'jordforurening forurenet jord',
+          originalQuery: 'hvad siger reglerne om jordforurening?'
+        }
+      }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
-
-  const { query, portal = 'mfkn.naevneneshus.dk', page = 1, pageSize = 5 } = body;
-
-  if (!query) {
-    return new Response(
-      JSON.stringify({ error: 'query parameter is required', example: { query: 'jordforurening' } }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const { cleanQuery: queryAfterExplicitCategories, categoryTitles: explicitCategories } = parseQueryWithCategories(query);
-
-  let workingQuery = queryAfterExplicitCategories;
-  const categories: CategoryFilter[] = [];
-  const allCategoryTitles: string[] = [...explicitCategories];
-  let matchedAlias: string | null = null;
-
-  const aliasMatch = await resolveCategoryFromQueryAlias(workingQuery, portal, supabase);
-  if (aliasMatch) {
-    categories.push(aliasMatch.category);
-    allCategoryTitles.push(aliasMatch.category.title);
-    matchedAlias = aliasMatch.matchedAlias;
-    workingQuery = removeMatchedAliasFromQuery(workingQuery, aliasMatch.matchedAlias);
-  }
-
-  if (explicitCategories.length > 0) {
-    const explicitCats = await resolveCategoryIds(portal, explicitCategories, supabase);
-    categories.push(...explicitCats);
-  }
-
-  console.log('Original query:', query);
-  console.log('After explicit category extraction:', queryAfterExplicitCategories);
-  console.log('After alias removal:', workingQuery);
-  console.log('All category titles:', allCategoryTitles);
-  console.log('Resolved categories:', categories);
-
-  const { transformedQuery, elasticsearchQuery, removedFillerWords } = transformQuery(workingQuery);
-
-  console.log('Transformed query:', transformedQuery);
-  console.log('Elasticsearch query:', elasticsearchQuery);
-  console.log('Removed filler words:', removedFillerWords);
-
-  const { optimizedQuery, addedSynonyms, expandedAcronyms } = await optimizeQuery(
-    elasticsearchQuery,
-    portal,
-    supabase
-  );
-
-  console.log('Optimized query:', optimizedQuery);
-  console.log('Added synonyms:', addedSynonyms);
-  console.log('Expanded acronyms:', expandedAcronyms);
 
   try {
     const apiUrl = `https://${portal}/api/Search`;
     const payload = {
-      query: optimizedQuery,
-      categories: categories.length > 0 ? categories : undefined,
+      query: query,
       parameters: {},
       sort: 1,
       skip: (page - 1) * pageSize,
       size: pageSize,
     };
+
+    console.log(`🔍 Searching ${portal}:`);
+    console.log(`  Original: "${originalQuery}"`);
+    console.log(`  Optimized: "${query}"`);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -249,74 +135,28 @@ async function handleMCP(req: Request, supabase: any) {
 
     await supabase.from('query_logs').insert({
       portal,
-      query: workingQuery,
-      filters: {
-        sort: 1,
-        categories: allCategoryTitles,
-        queryProcessing: {
-          original: query,
-          afterExplicitCategories: queryAfterExplicitCategories,
-          afterAliasRemoval: workingQuery,
-          transformed: transformedQuery,
-          elasticsearch: elasticsearchQuery,
-          final: optimizedQuery,
-          extractedCategories: allCategoryTitles,
-          matchedAlias: matchedAlias,
-          removedFillerWords: removedFillerWords,
-          addedSynonyms: addedSynonyms,
-          expandedAcronyms: expandedAcronyms
-        }
-      },
+      original_query: originalQuery,
+      optimized_query: query,
+      query: query,
       result_count: resultCount,
       execution_time_ms: executionTime,
       user_identifier: 'openwebui',
     });
 
-    const formattedResult = formatMCPResultsJSON(
-      data,
-      portal,
-      query,
-      queryAfterExplicitCategories,
-      workingQuery,
-      transformedQuery,
-      elasticsearchQuery,
-      optimizedQuery,
-      allCategoryTitles,
-      matchedAlias,
-      removedFillerWords,
-      addedSynonyms,
-      expandedAcronyms,
-      executionTime,
-      page,
-      pageSize
-    );
+    console.log(`✅ Found ${resultCount} results in ${executionTime}ms`);
 
-    return new Response(JSON.stringify(formattedResult), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify(formatResults(data, portal, executionTime, page, pageSize)),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (error) {
     const executionTime = Date.now() - startTime;
 
     await supabase.from('query_logs').insert({
       portal,
-      query: workingQuery,
-      filters: {
-        sort: 1,
-        categories: allCategoryTitles,
-        queryProcessing: {
-          original: query,
-          afterExplicitCategories: queryAfterExplicitCategories,
-          afterAliasRemoval: workingQuery,
-          transformed: transformedQuery,
-          elasticsearch: elasticsearchQuery,
-          final: optimizedQuery,
-          extractedCategories: allCategoryTitles,
-          matchedAlias: matchedAlias,
-          removedFillerWords: removedFillerWords,
-          addedSynonyms: addedSynonyms,
-          expandedAcronyms: expandedAcronyms
-        }
-      },
+      original_query: originalQuery,
+      optimized_query: query,
+      query: query,
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error.message,
@@ -324,65 +164,31 @@ async function handleMCP(req: Request, supabase: any) {
     });
 
     return new Response(
-      JSON.stringify({ error: error.message, portal, query: workingQuery }),
+      JSON.stringify({ error: error.message, portal, originalQuery, query }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 }
 
-function formatMCPResultsJSON(
-  data: any,
-  portal: string,
-  originalQuery: string,
-  afterExplicitCategories: string,
-  afterAliasRemoval: string,
-  transformed: string,
-  elasticsearch: string,
-  final: string,
-  extractedCategories: string[],
-  matchedAlias: string | null,
-  removedFillerWords: string[],
-  addedSynonyms: string[],
-  expandedAcronyms: Array<{ acronym: string; fullTerm: string }>,
-  executionTime: number,
-  page: number,
-  pageSize: number
-) {
+function formatResults(data: any, portal: string, executionTime: number, page: number, pageSize: number) {
   const total = data.totalCount || 0;
   const publications = data.publications || [];
   const categoryCounts = data.categoryCounts || [];
 
-  const queryProcessing = {
-    original: originalQuery,
-    afterExplicitCategories: afterExplicitCategories,
-    afterAliasRemoval: afterAliasRemoval,
-    transformed: transformed,
-    elasticsearch: elasticsearch,
-    final: final,
-    extractedCategories: extractedCategories,
-    matchedAlias: matchedAlias,
-    removedFillerWords: removedFillerWords,
-    addedSynonyms: addedSynonyms,
-    expandedAcronyms: expandedAcronyms
-  };
-
   if (total === 0) {
     return {
       success: true,
-      queryProcessing,
       portal,
       totalCount: 0,
       results: [],
       executionTime,
-      message: 'Ingen resultater fundet',
-      suggestions: ['Brug andre s�geord', 'Fjern datofiltre', 'Tjek stavning']
+      message: 'Ingen resultater fundet'
     };
   }
 
   const results = publications.map((pub: any) => {
     const pubType = pub.type || 'ruling';
     const link = `https://${portal}/${pubType === 'news' ? 'nyhed' : 'afgoerelse'}/${pub.id}`;
-
     const cleanBody = decodeHtmlEntities(stripHtmlTags(pub.body || ''));
 
     return {
@@ -400,7 +206,6 @@ function formatMCPResultsJSON(
 
   const response: any = {
     success: true,
-    queryProcessing,
     portal,
     totalCount: total,
     page,
@@ -424,44 +229,7 @@ function formatMCPResultsJSON(
     };
   }
 
-  response.aiPrompt = `Lav et kort resume (50-150 ord) af s�geresultaterne nedenfor. Fokuser p� de vigtigste fund og m�nstre p� tv�rs af resultaterne. Brug dansk sprog.
-
-S�gning: "${originalQuery}"
-Antal resultater: ${total}
-Kategorier: ${extractedCategories.join(', ')}
-
-Resultater:
-${results.slice(0, 3).map((r: any, i: number) => `${i + 1}. ${r.title}\nKategorier: ${r.categories.join(', ')}\nDato: ${r.date}\nIndhold: ${r.body.substring(0, 500)}...`).join('\n\n')}`;
-
   return response;
-}
-
-async function handleSearch(req: Request, supabase: any) {
-  return new Response(
-    JSON.stringify({ error: 'Use portal-specific /mcp/{portal} endpoints instead' }),
-    { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-async function handleFeed(req: Request, supabase: any) {
-  return new Response(
-    JSON.stringify({ error: 'Not implemented' }),
-    { status: 501, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-async function handlePublication(req: Request, supabase: any) {
-  return new Response(
-    JSON.stringify({ error: 'Not implemented' }),
-    { status: 501, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-async function handleSiteSettings(req: Request) {
-  return new Response(
-    JSON.stringify({ error: 'Not implemented' }),
-    { status: 501, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
 }
 
 async function handlePortals() {
@@ -487,213 +255,6 @@ async function handlePortals() {
   );
 }
 
-const FILLER_WORDS = new Set([
-  'og', 'eller', 'i', 'p�', 'for', 'af', 'at', 'der', 'det', 'den', 'de',
-  'en', 'et', 'som', 'med', 'til', 'the', 'a', 'an', 'ved', 'om',
-  's�gning', 'praksis', 'praksiss�gning', 'efter', 'mbl', 'pl', 'hdl', 'rl', 'jfl', 'vl', 'sl'
-]);
-
-function parseQueryWithCategories(query: string): { cleanQuery: string; categoryTitles: string[] } {
-  const categoryPattern = /,?\s*kategori[er]*:\s*([^,]+)/gi;
-  const categoryTitles: string[] = [];
-
-  let match;
-  while ((match = categoryPattern.exec(query)) !== null) {
-    categoryTitles.push(match[1].trim());
-  }
-
-  const cleanQuery = query.replace(categoryPattern, '').trim();
-
-  return { cleanQuery, categoryTitles };
-}
-
-function transformQuery(rawQuery: string): {
-  transformedQuery: string;
-  elasticsearchQuery: string;
-  removedFillerWords: string[];
-} {
-  const cleanedQuery = rawQuery.replace(/\s+/g, ' ').trim();
-  const tokens = cleanedQuery.match(/"[^"]+"|[^\s]+/g) || [];
-  const removedFillerWords: string[] = [];
-  const processed: string[] = [];
-  const seen = new Set<string>();
-
-  tokens.forEach((token) => {
-    const normalized = token.replace(/^["']|["']$/g, '');
-    const lower = normalized.toLowerCase();
-
-    if (['and', '&&', 'og', 'eller', 'or'].includes(lower)) {
-      removedFillerWords.push(normalized);
-      return;
-    }
-
-    if (FILLER_WORDS.has(lower)) {
-      removedFillerWords.push(normalized);
-      return;
-    }
-
-    if (normalized.match(/^\d+-\w+$/)) {
-      removedFillerWords.push(normalized);
-      return;
-    }
-
-    let processedToken: string;
-
-    if (normalized === '�') {
-      processedToken = `"�"`;
-    } else if (/^\d+$/.test(normalized)) {
-      processedToken = `"${normalized}"`;
-    } else if (normalized.includes(' ')) {
-      processedToken = `"${normalized}"`;
-    } else {
-      processedToken = normalized;
-    }
-
-    if (!seen.has(processedToken)) {
-      seen.add(processedToken);
-      processed.push(processedToken);
-    }
-  });
-
-  const elasticsearchParts: string[] = [];
-  for (let i = 0; i < processed.length; i++) {
-    if (i > 0) {
-      elasticsearchParts.push('AND');
-    }
-    elasticsearchParts.push(processed[i]);
-  }
-
-  const elasticsearchQuery = elasticsearchParts.join(' ');
-  const transformedQuery = processed.join(' ');
-
-  return {
-    transformedQuery,
-    elasticsearchQuery,
-    removedFillerWords,
-  };
-}
-
-async function resolveCategoryFromQueryAlias(
-  query: string,
-  portal: string,
-  supabase: any
-): Promise<{ category: CategoryFilter; matchedAlias: string } | null> {
-  const { data: categories, error } = await supabase
-    .from('site_categories')
-    .select('category_id, category_title, aliases')
-    .eq('portal', portal);
-
-  if (error || !categories || categories.length === 0) {
-    return null;
-  }
-
-  const queryUpper = query.toUpperCase();
-  const queryWords = query.split(/\s+/).map(w => w.toUpperCase());
-
-  for (const category of categories) {
-    const aliases = category.aliases || [];
-
-    for (const alias of aliases) {
-      const aliasUpper = alias.toUpperCase();
-
-      if (queryWords.includes(aliasUpper) || queryUpper.includes(aliasUpper)) {
-        return {
-          category: {
-            id: category.category_id,
-            title: category.category_title,
-          },
-          matchedAlias: alias,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function removeMatchedAliasFromQuery(query: string, matchedAlias: string): string {
-  const regex = new RegExp(`\\b${matchedAlias}\\b`, 'gi');
-  return query.replace(regex, '').replace(/\s+/g, ' ').trim();
-}
-
-async function resolveCategoryIds(
-  portal: string,
-  categoryTitles: string[],
-  supabase: any
-): Promise<CategoryFilter[]> {
-  if (categoryTitles.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from('site_categories')
-    .select('category_id, category_title')
-    .eq('portal', portal)
-    .in('category_title', categoryTitles);
-
-  if (error) {
-    console.error('Error resolving categories:', error);
-    return [];
-  }
-
-  return (data || []).map((row: any) => ({
-    id: row.category_id,
-    title: row.category_title,
-  }));
-}
-
-async function optimizeQuery(
-  query: string,
-  portal: string,
-  supabase: any
-): Promise<{
-  optimizedQuery: string;
-  addedSynonyms: string[];
-  expandedAcronyms: Array<{ acronym: string; fullTerm: string }>;
-}> {
-  const { data: synonyms } = await supabase
-    .from('query_synonyms')
-    .select('term, synonyms')
-    .eq('portal', portal);
-
-  const { data: acronyms } = await supabase
-    .from('portal_acronyms')
-    .select('acronym, full_term')
-    .eq('portal', portal);
-
-  let optimizedQuery = query;
-  const addedSynonyms: string[] = [];
-  const expandedAcronyms: Array<{ acronym: string; fullTerm: string }> = [];
-
-  if (acronyms && acronyms.length > 0) {
-    for (const acronym of acronyms) {
-      const regex = new RegExp(`\\b${acronym.acronym}\\b`, 'gi');
-      if (regex.test(optimizedQuery)) {
-        optimizedQuery += ` ${acronym.full_term}`;
-        expandedAcronyms.push({
-          acronym: acronym.acronym,
-          fullTerm: acronym.full_term,
-        });
-      }
-    }
-  }
-
-  if (synonyms && synonyms.length > 0) {
-    for (const synonym of synonyms) {
-      const regex = new RegExp(`\\b${synonym.term}\\b`, 'gi');
-      if (regex.test(optimizedQuery)) {
-        const syns = synonym.synonyms.join(' ');
-        optimizedQuery += ` ${syns}`;
-        addedSynonyms.push(...synonym.synonyms);
-      }
-    }
-  }
-
-  return {
-    optimizedQuery,
-    addedSynonyms,
-    expandedAcronyms,
-  };
-}
-
 function stripHtmlTags(html: string): string {
   return html
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -712,20 +273,20 @@ function decodeHtmlEntities(text: string): string {
     '&quot;': '"',
     '&#39;': "'",
     '&apos;': "'",
-    '&aelig;': '�',
-    '&AElig;': '�',
-    '&oslash;': '�',
-    '&Oslash;': '�',
-    '&aring;': '�',
-    '&Aring;': '�',
+    '&aelig;': 'æ',
+    '&AElig;': 'Æ',
+    '&oslash;': 'ø',
+    '&Oslash;': 'Ø',
+    '&aring;': 'å',
+    '&Aring;': 'Å',
     '&ldquo;': '"',
     '&rdquo;': '"',
     '&lsquo;': "'",
     '&rsquo;': "'",
-    '&mdash;': '',
-    '&ndash;': '',
+    '&mdash;': '—',
+    '&ndash;': '–',
     '&hellip;': '...',
-    '&sect;': '�',
+    '&sect;': '§',
   };
 
   let decoded = text;
@@ -739,13 +300,271 @@ function decodeHtmlEntities(text: string): string {
   return decoded;
 }
 
-async function handleOpenAPISpec(req: Request) {
-  return new Response(
-    JSON.stringify({
-      openapi: '3.0.0',
-      info: { title: 'N�vneneshus Search API', version: '1.5.0' },
-      paths: {}
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+async function handleOpenAPISpec(req: Request, supabase: any) {
+  console.log('📖 Generating OpenAPI spec with metadata...');
+
+  const { data: portals, error: portalsError } = await supabase
+    .from('portal_metadata')
+    .select('portal, name, domain_focus')
+    .order('portal');
+
+  if (portalsError) {
+    console.error('Failed to fetch portals:', portalsError.message);
+    return new Response(
+      JSON.stringify({ error: 'Failed to fetch portal metadata' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const portalList = portals?.map(p => p.portal) || [];
+
+  const [categoriesResult, legalAreasResult, acronymsResult, synonymsResult] = await Promise.all([
+    supabase.from('site_categories').select('portal, category_title, aliases').in('portal', portalList),
+    supabase.from('legal_areas').select('portal, area_name').in('portal', portalList),
+    supabase.from('portal_acronyms').select('portal, acronym, full_term').in('portal', portalList),
+    supabase.from('query_synonyms').select('portal, term, synonyms').in('portal', portalList)
+  ]);
+
+  const categoriesByPortal = new Map<string, Array<{title: string, aliases: string[]}>>();
+  const legalAreasByPortal = new Map<string, string[]>();
+  const acronymsByPortal = new Map<string, Array<{acronym: string, full_term: string}>>();
+  const synonymsByPortal = new Map<string, Array<{term: string, synonyms: string[]}>>();
+
+  categoriesResult.data?.forEach(c => {
+    if (!categoriesByPortal.has(c.portal)) categoriesByPortal.set(c.portal, []);
+    categoriesByPortal.get(c.portal)!.push({title: c.category_title, aliases: c.aliases || []});
+  });
+
+  legalAreasResult.data?.forEach(a => {
+    if (!legalAreasByPortal.has(a.portal)) legalAreasByPortal.set(a.portal, []);
+    legalAreasByPortal.get(a.portal)!.push(a.area_name);
+  });
+
+  acronymsResult.data?.forEach(a => {
+    if (!acronymsByPortal.has(a.portal)) acronymsByPortal.set(a.portal, []);
+    acronymsByPortal.get(a.portal)!.push({acronym: a.acronym, full_term: a.full_term});
+  });
+
+  synonymsResult.data?.forEach(s => {
+    if (!synonymsByPortal.has(s.portal)) synonymsByPortal.set(s.portal, []);
+    synonymsByPortal.get(s.portal)!.push({term: s.term, synonyms: s.synonyms || []});
+  });
+
+  const paths: any = {};
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+
+  for (const portalMeta of (portals || [])) {
+    const operationId = `search_${portalMeta.portal.replace(/[^a-z0-9]/gi, '_')}`;
+    const categories = categoriesByPortal.get(portalMeta.portal) || [];
+    const legalAreas = legalAreasByPortal.get(portalMeta.portal) || [];
+    const acronyms = acronymsByPortal.get(portalMeta.portal) || [];
+    const synonyms = synonymsByPortal.get(portalMeta.portal) || [];
+
+    let description = `DU ER SØGEASSISTENT FOR ${portalMeta.name || portalMeta.portal}
+
+METADATA:
+- Portal: ${portalMeta.portal}
+- Fokusområde: ${portalMeta.domain_focus || 'Administrative afgørelser'}
+
+LOVOMRÅDER: ${legalAreas.slice(0, 10).join(', ') || 'Ingen specificeret'}
+
+KATEGORIER (med aliases):
+${categories.slice(0, 15).map(c => `- ${c.title}${c.aliases.length > 0 ? ` (aliases: ${c.aliases.join(', ')})` : ''}`).join('\n') || '- Ingen kategorier'}
+
+AKRONYMER:
+${acronyms.slice(0, 10).map(a => `- ${a.acronym} → ${a.full_term}`).join('\n') || '- Ingen akronymer'}
+
+SYNONYMER:
+${synonyms.slice(0, 10).map(s => `- ${s.term} → ${s.synonyms.join(', ')}`).join('\n') || '- Ingen synonymer'}
+
+OPGAVE - QUERY OPTIMERING:
+1. Analyser brugerens spørgsmål (originalQuery)
+2. Identificer kernesøgeord
+3. Ekspander akronymer baseret på listen ovenfor
+4. Tilføj relevante synonymer baseret på listen ovenfor
+5. Fjern filler words: og, eller, i, på, for, af, at, der, det, den, de, en, et, som, med, til, ved, om
+6. Ret stavefejl hvis muligt
+7. Konverter til effektiv søgestreng
+
+EKSEMPLER:
+Bruger: "hvad siger reglerne om jordforurening?"
+→ query: "jordforurening regler"
+
+Bruger: "MBL § 72 om støj"
+→ query: "Miljøbeskyttelsesloven § 72 støj"
+
+Bruger: "praksis om byggetilladelse i landzone"
+→ query: "byggetilladelse landzone"
+
+FUNKTIONSKALD:
+Send ALTID både originalQuery (brugerens præcise input) og query (din optimerede version).
+
+EFTER RESULTAT:
+Generer 50-100 ords dansk resume baseret på:
+- Resultaternes body tekst (hovedindhold)
+- Kategorier og mønstre på tværs af resultater
+- Vigtigste juridiske fund og konklusioner
+- Dato og relevans for brugerens spørgsmål`;
+
+    paths[`/mcp/${portalMeta.portal}`] = {
+      post: {
+        summary: `Søg i ${portalMeta.name || portalMeta.portal}`,
+        description,
+        operationId,
+        'x-openai-isConsequential': false,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['query', 'originalQuery'],
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'AI-optimeret søgestreng (med synonymer, akronymer ekspanderet, uden filler words)',
+                    example: 'jordforurening forurenet jord grund',
+                  },
+                  originalQuery: {
+                    type: 'string',
+                    description: 'Brugerens originale input (uændret)',
+                    example: 'hvad siger reglerne om jordforurening?',
+                  },
+                  page: {
+                    type: 'integer',
+                    description: 'Side nummer (standard: 1)',
+                    default: 1,
+                    minimum: 1,
+                  },
+                  pageSize: {
+                    type: 'integer',
+                    description: 'Antal resultater per side (standard: 5, max: 20)',
+                    default: 5,
+                    minimum: 1,
+                    maximum: 20,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Søgning gennemført succesfuldt',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    portal: { type: 'string' },
+                    totalCount: { type: 'integer' },
+                    page: { type: 'integer' },
+                    pageSize: { type: 'integer' },
+                    results: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string' },
+                          title: { type: 'string' },
+                          date: { type: 'string', nullable: true },
+                          categories: { type: 'array', items: { type: 'string' } },
+                          journalNumbers: { type: 'array', items: { type: 'string' } },
+                          type: { type: 'string', enum: ['ruling', 'news'] },
+                          link: { type: 'string', format: 'uri' },
+                          body: { type: 'string', description: 'Clean text uden HTML' },
+                          abstract: { type: 'string' }
+                        }
+                      }
+                    },
+                    categoryCounts: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          category: { type: 'string' },
+                          count: { type: 'integer' }
+                        }
+                      }
+                    },
+                    pagination: {
+                      type: 'object',
+                      properties: {
+                        hasMore: { type: 'boolean' },
+                        nextPage: { type: 'integer' },
+                        totalPages: { type: 'integer' }
+                      }
+                    },
+                    executionTime: { type: 'integer' }
+                  }
+                }
+              }
+            }
+          },
+          '400': {
+            description: 'Ugyldig forespørgsel - mangler query eller originalQuery'
+          },
+          '500': {
+            description: 'Serverfejl'
+          }
+        }
+      }
+    };
+  }
+
+  const spec = {
+    openapi: '3.0.0',
+    info: {
+      title: 'Nævneneshus Search API',
+      version: '2.0.0',
+      description: 'Simplified search API where AI handles query optimization. Each portal has metadata-driven prompts with categories, acronyms, and synonyms.',
+    },
+    servers: [
+      {
+        url: `${supabaseUrl}/functions/v1/naevneneshus-mcp`,
+        description: 'Supabase Edge Function',
+      },
+    ],
+    paths: {
+      ...paths,
+      '/portals': {
+        get: {
+          summary: 'List available portals',
+          operationId: 'listPortals',
+          responses: {
+            '200': {
+              description: 'List of portals',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      portals: { type: 'array', items: { type: 'string' } }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          description: 'Optional Supabase anon key',
+        },
+      },
+    },
+    security: [],
+  };
+
+  console.log(`✅ Generated spec with ${Object.keys(paths).length} portal tools`);
+
+  return new Response(JSON.stringify(spec), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
