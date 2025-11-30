@@ -363,8 +363,6 @@ function generateSystemPrompt(
 
   const stopwordsList = 'praksis, afgørelse, afgørelser, kendelse, kendelser, dom, domme, sag, sager, om, ved, for, til, søgning, søg, find, finde, vise, vis, alle, og, eller, samt, i, af, på, med, fra';
 
-  const roleDescriptionsList = 'teknisk assistent, teknisk rådgiver, rådgiver, konsulent, specialist, ekspert, jurist, advokat, sagsbehandler';
-
   return `SYSTEM PROMPT — ${portalName} Search Tool
 
 Du skal kalde værktøjet "${operationId}" for søgninger på ${portalName} (${portalDomain}).
@@ -376,11 +374,44 @@ Du skal kalde værktøjet "${operationId}" for søgninger på ${portalName} (${p
 
 📋 QUERY OPTIMERING (Dit Ansvar)
 
-Trin 1: Fjern stopwords og rollebeskrivelser
-Stopwords: ${stopwordsList}
-Rollebeskrivelser (fjern ALTID): ${roleDescriptionsList}
+Trin 0: INTELLIGENT ROLLEDETEKTION (Vigtigst!)
+Analysér om query starter med en beskrivelse af HVEM der skal undersøge noget (ikke HVAD der skal undersøges).
 
-Eksempel: "Teknisk assistent aldersvurdering kulbrinteforurening" → "aldersvurdering kulbrinteforurening"
+Brug din sprogforståelse til at identificere mønstre som:
+- "[Profession/Rolle] – [emne]" → Behold kun [emne]
+- "[Rolle] [emne]" → Behold kun [emne]
+- "[Person/Rolle] skal/behov [emne]" → Behold kun [emne]
+
+✅ KORREKT rollefjernelse (fjern HVEM, behold HVAD):
+• "Teknisk assistent – aldersvurdering af kulbrinteforurening"
+  → Fjern "Teknisk assistent –" (beskriver hvem der undersøger)
+  → Behold "aldersvurdering kulbrinteforurening" (beskriver hvad der undersøges)
+
+• "Jurist støjregulering vindmøller"
+  → Fjern "Jurist" (profession/rolle)
+  → Behold "støjregulering vindmøller" (emne)
+
+• "Advokat behov for praksis om § 72"
+  → Fjern "Advokat behov for" (hvem + hvorfor)
+  → Behold "praksis § 72" (hvad)
+
+• "Sagsbehandler skal undersøge jordforurening"
+  → Fjern "Sagsbehandler skal undersøge" (hvem + handling)
+  → Behold "jordforurening" (emne)
+
+• "Konsulent – analyse af NBL § 3"
+  → Fjern "Konsulent – analyse af" (rolle + opgave)
+  → Behold "NBL § 3" (emne)
+
+❌ UNDGÅ false positives (lad være uændret):
+• "støj fra vindmøller" → Ingen rolle, lad være
+• "§ 72 praksis" → Ingen rolle, lad være
+• "assistentansættelse regler" → "assistent" er del af emnet, ikke en rolle
+
+Tænk: Hvis starten af query beskriver HVEM der skal søge/undersøge (ikke HVAD der skal søges), så fjern det.
+
+Trin 1: Fjern stopwords
+Stopwords: ${stopwordsList}
 
 Trin 2: Rens § henvisninger
 - Fjern dubletter: "§ 72 § 72" → "§ 72"
@@ -406,6 +437,7 @@ Trin 4: Fjern akronym fra query
 
 Eksempel 1:
 Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
+0. Ingen rollebeskrivelse detekteret
 1. Fjern stopwords: ved, og, søgning, om → "Bevisbyrde MBL § 72 § 72-praksis"
 2. Rens §: § 72 § 72-praksis → § 72 → "Bevisbyrde MBL § 72"
 3. Identificér: MBL → Miljøbeskyttelsesloven
@@ -413,22 +445,35 @@ Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
 5. Kald: {"query": "Bevisbyrde § 72", "detectedAcronym": "MBL"}
 
 Eksempel 2:
-Input: "Teknisk assistent aldersvurdering kulbrinteforurening"
-1. Fjern: Teknisk assistent (rollebeskrivelse) → "aldersvurdering kulbrinteforurening"
+Input: "Teknisk assistent – aldersvurdering af kulbrinteforurening"
+0. Rolledetektion: "Teknisk assistent –" beskriver hvem (rolle) → fjern
+   Resultat: "aldersvurdering kulbrinteforurening"
+1. Fjern stopwords: af → "aldersvurdering kulbrinteforurening"
 2. Ingen §
 3. Intet akronym fundet
 4. Kald: {"query": "aldersvurdering kulbrinteforurening", "detectedAcronym": null}
 
 Eksempel 3:
+Input: "Jurist – behov for støjregulering vindmøller"
+0. Rolledetektion: "Jurist – behov for" beskriver hvem og hvorfor → fjern
+   Resultat: "støjregulering vindmøller"
+1. Ingen stopwords at fjerne
+2. Ingen §
+3. Intet akronym fundet
+4. Kald: {"query": "støjregulering vindmøller", "detectedAcronym": null}
+
+Eksempel 4:
 Input: "praksis om NBL § 3 strandbeskyttelse"
+0. Ingen rollebeskrivelse detekteret
 1. Fjern: praksis, om → "NBL § 3 strandbeskyttelse"
 2. § allerede ren
 3. Identificér: NBL → Naturbeskyttelsesloven
 4. Fjern NBL: "§ 3 strandbeskyttelse"
 5. Kald: {"query": "§ 3 strandbeskyttelse", "detectedAcronym": "NBL"}
 
-Eksempel 4:
+Eksempel 5:
 Input: "støj fra vindmøller"
+0. Ingen rollebeskrivelse detekteret
 1. Fjern: fra → "støj vindmøller"
 2. Ingen §
 3. Intet akronym fundet
@@ -436,7 +481,8 @@ Input: "støj fra vindmøller"
 
 ⚠️ VIGTIGE REGLER
 
-- Fjern ALTID rollebeskrivelser fra query (teknisk assistent, rådgiver, konsulent, etc.)
+- FØRST: Analysér om query starter med rollebeskrivelse (HVEM) - fjern dette, behold kun emnet (HVAD)
+- Brug din sprogforståelse: Er det en profession/rolle eller en del af søgeemnet?
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
 - Behold § henvisninger i query
