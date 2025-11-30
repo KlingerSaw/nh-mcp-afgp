@@ -769,7 +769,11 @@ function parseSearchResults(data: any, portal: string, query?: string) {
 
     // Clean body content from abstract or body field
     const rawBody = item.body || item.Body || item.abstract || item.Abstract || "";
-    const cleanBody = cleanHtml(rawBody);
+    const MAX_BODY_LENGTH = 1000;
+    const cleanBodyFull = cleanHtml(rawBody);
+    const cleanBody = cleanBodyFull.length > MAX_BODY_LENGTH
+      ? cleanBodyFull.substring(0, MAX_BODY_LENGTH) + '...'
+      : cleanBodyFull;
 
     return {
       id,
