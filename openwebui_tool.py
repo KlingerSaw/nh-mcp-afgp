@@ -72,21 +72,22 @@ class Tools:
             run(query="vindmøller", portal="ekn.naevneneshus.dk")
         """
 
-        # Build query string with category filter if provided
-        full_query = query
-        if category:
-            full_query = f"{query}, kategori: {category}"
-
         # Build request payload for MCP endpoint
         # Explicitly include the portal and originalRequest so the MCP server
         # can log the correct portal/query combination in the monitoring UI.
         payload = {
             "portal": portal,
-            "query": full_query,
+            "query": query,
             "page": page,
             "pageSize": min(page_size, 50),  # Cap at 50
             "originalRequest": query,
         }
+
+        # Add category filter if provided
+        if category:
+            payload["filters"] = {
+                "category": category
+            }
 
         try:
             # Call MCP endpoint (includes automatic logging to database)
