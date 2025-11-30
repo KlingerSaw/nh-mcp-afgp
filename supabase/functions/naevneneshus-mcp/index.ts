@@ -37,10 +37,6 @@ interface DetailRequest {
   id: string;
 }
 
-interface ListPortalsRequest {
-  // Empty for now
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, {
@@ -50,20 +46,39 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Read request body
-    const contentType = req.headers.get('content-type') || '';
-    console.log('Content-Type:', contentType);
-    
-    const bodyText = await req.text();
-    console.log('Raw body:', bodyText);
-    
-    if (!bodyText || bodyText.trim() === '') {
-      throw new Error('Request body is empty');
+    let operation: string;
+    let params: any;
+
+    // Handle both GET and POST requests
+    if (req.method === "GET") {
+      const url = new URL(req.url);
+      operation = url.searchParams.get('operation') || 'listPortals';
+      
+      // Parse params from URL
+      params = {};
+      for (const [key, value] of url.searchParams.entries()) {
+        if (key !== 'operation') {
+          params[key] = value;
+        }
+      }
+      
+      console.log('GET request - Operation:', operation, 'Params:', params);
+    } else {
+      // POST request
+      const bodyText = await req.text();
+      console.log('POST - Raw body:', bodyText);
+      
+      if (!bodyText || bodyText.trim() === '') {
+        throw new Error('Request body is empty');
+      }
+      
+      const parsed = JSON.parse(bodyText);
+      operation = parsed.operation;
+      params = parsed;
+      delete params.operation;
+      
+      console.log('POST request - Operation:', operation, 'Params:', params);
     }
-    
-    const { operation, ...params } = JSON.parse(bodyText);
-    console.log('Operation:', operation);
-    console.log('Params:', JSON.stringify(params));
 
     let result;
     switch (operation) {
@@ -83,7 +98,7 @@ Deno.serve(async (req: Request) => {
         throw new Error(`Unknown operation: ${operation}`);
     }
 
-    return new Response(JSON.stringify(result), {
+    return new Response(JSON.stringify(result, null, 2), {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
@@ -95,7 +110,7 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         error: error instanceof Error ? error.message : "Unknown error",
         stack: error instanceof Error ? error.stack : undefined,
-      }),
+      }, null, 2),
       {
         status: 500,
         headers: {
@@ -110,6 +125,10 @@ Deno.serve(async (req: Request) => {
 async function searchPortal(request: SearchRequest) {
   const startTime = Date.now();
   const { portal, query, originalQuery, page = 1, pageSize = 10, filters, detectedAcronyms } = request;
+
+  if (!portal || !query) {
+    throw new Error('Missing required parameters: portal and query');
+  }
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
@@ -131,6 +150,9 @@ async function searchPortal(request: SearchRequest) {
 
     const searchPayload = buildSearchPayload(optimizedQuery, page, pageSize, mergedFilters);
     const searchUrl = `https://${portal}/api/Search`;
+
+    console.log('Calling search API:', searchUrl);
+    console.log('Search payload:', JSON.stringify(searchPayload));
 
     const response = await fetch(searchUrl, {
       method: "POST",
@@ -206,6 +228,10 @@ async function searchPortal(request: SearchRequest) {
 async function getLatestPublications(request: FeedRequest) {
   const { portal, page = 1, pageSize = 10 } = request;
 
+  if (!portal) {
+    throw new Error('Missing required parameter: portal');
+  }
+
   const feedUrl = `https://${portal}/api/feed`;
   const response = await fetch(feedUrl, {
     headers: {
@@ -238,6 +264,10 @@ async function getLatestPublications(request: FeedRequest) {
 
 async function getPublicationDetail(request: DetailRequest) {
   const { portal, id } = request;
+
+  if (!portal || !id) {
+    throw new Error('Missing required parameters: portal and id');
+  }
 
   const detailUrl = `https://${portal}/api/publication/${id}`;
   const response = await fetch(detailUrl, {
