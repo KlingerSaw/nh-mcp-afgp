@@ -167,8 +167,6 @@ async function searchPortal(request: SearchRequest) {
       original_query: originalQuery || query,
       result_count: results.totalCount,
       execution_time_ms: executionTime,
-      status: "success",
-      detected_acronyms: detectedAcronyms,
     });
 
     return {
@@ -191,7 +189,6 @@ async function searchPortal(request: SearchRequest) {
       original_query: originalQuery || query,
       result_count: 0,
       execution_time_ms: executionTime,
-      status: "error",
       error_message: error.message,
     });
 
@@ -358,16 +355,20 @@ function stripHtml(html: string): string {
 
 async function logQuery(supabase: any, data: any) {
   try {
-    await supabase.from("query_logs").insert({
+    const logData: any = {
       portal: data.portal,
       query: data.query,
       original_query: data.original_query,
       result_count: data.result_count,
       execution_time_ms: data.execution_time_ms,
-      status: data.status,
-      error_message: data.error_message,
-      detected_acronyms: data.detected_acronyms,
-    });
+    };
+
+    // Only include error_message if present
+    if (data.error_message) {
+      logData.error_message = data.error_message;
+    }
+
+    await supabase.from("query_logs").insert(logData);
   } catch (error) {
     console.error("Failed to log query:", error);
   }
