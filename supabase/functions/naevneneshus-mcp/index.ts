@@ -32,9 +32,13 @@ interface FeedRequest {
   pageSize?: number;
 }
 
-interface PublicationRequest {
+interface DetailRequest {
   portal: string;
-  publicationId: string;
+  id: string;
+}
+
+interface ListPortalsRequest {
+  // Empty for now
 }
 
 Deno.serve(async (req: Request) => {
@@ -45,74 +49,28 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  const url = new URL(req.url);
-  const path = url.pathname.replace(/^\/naevneneshus-mcp/, "");
-
   try {
-    if (path === "/openapi.json" && req.method === "GET") {
-      const openapi = generateOpenAPISpec();
-      return new Response(JSON.stringify(openapi, null, 2), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
+    const { operation, ...params } = await req.json();
+
+    let result;
+    switch (operation) {
+      case "searchPortal":
+        result = await searchPortal(params as SearchRequest);
+        break;
+      case "getLatestPublications":
+        result = await getLatestPublications(params as FeedRequest);
+        break;
+      case "getPublicationDetail":
+        result = await getPublicationDetail(params as DetailRequest);
+        break;
+      case "listPortals":
+        result = await listPortals();
+        break;
+      default:
+        throw new Error(`Unknown operation: ${operation}`);
     }
 
-    if (path === "/health" && req.method === "GET") {
-      return new Response(JSON.stringify({ status: "healthy", timestamp: new Date().toISOString() }), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-    }
-
-    if (path === "/portals" && req.method === "GET") {
-      const portals = await getPortalsList();
-      return new Response(JSON.stringify(portals), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-    }
-
-    if (path === "/search" && req.method === "POST") {
-      const body: SearchRequest = await req.json();
-      const result = await searchPortal(body);
-      return new Response(JSON.stringify(result), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-    }
-
-    if (path === "/feed" && req.method === "POST") {
-      const body: FeedRequest = await req.json();
-      const result = await getPortalFeed(body);
-      return new Response(JSON.stringify(result), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-    }
-
-    if (path === "/publication" && req.method === "POST") {
-      const body: PublicationRequest = await req.json();
-      const result = await getPublicationDetail(body);
-      return new Response(JSON.stringify(result), {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      });
-    }
-
-    return new Response(JSON.stringify({ error: "Not found" }), {
-      status: 404,
+    return new Response(JSON.stringify(result), {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
@@ -120,13 +78,18 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     console.error("Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-    });
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
   }
 });
 
@@ -196,17 +159,17 @@ async function searchPortal(request: SearchRequest) {
       acronymsToLog = detectAcronyms(query);
     }
 
-    // Log acronym suggestions
+    // Log detected acronyms
     if (acronymsToLog && acronymsToLog.length > 0) {
-      await logAcronymSuggestions(supabase, portal, query, acronymsToLog);
+      await logAcronyms(supabase, portal, acronymsToLog);
     }
 
     return {
       success: true,
       portal,
-      query,
+      query: optimizedQuery,
       originalQuery: originalQuery || query,
-      results: results.items,
+      results: results.results,
       totalCount: results.totalCount,
       page,
       pageSize,
@@ -214,39 +177,27 @@ async function searchPortal(request: SearchRequest) {
     };
   } catch (error) {
     const executionTime = Date.now() - startTime;
-
     await logQuery(supabase, {
       portal,
       query,
       original_query: originalQuery || query,
       result_count: 0,
       execution_time_ms: executionTime,
-      error_message: error.message,
+      error_message: error instanceof Error ? error.message : "Unknown error",
     });
-
     throw error;
   }
 }
 
-async function getPortalFeed(request: FeedRequest) {
+async function getLatestPublications(request: FeedRequest) {
   const { portal, page = 1, pageSize = 10 } = request;
 
-  const skip = (page - 1) * pageSize;
-  const feedPayload = {
-    term: "",
-    skip,
-    take: pageSize,
-    sort: 0,
-  };
-
-  const feedUrl = `https://${portal}/api/Feed`;
+  const feedUrl = `https://${portal}/api/feed`;
   const response = await fetch(feedUrl, {
-    method: "POST",
     headers: {
       "Accept": "application/json",
-      "Content-Type": "application/json",
+      "User-Agent": "MCP-Server/1.0",
     },
-    body: JSON.stringify(feedPayload),
   });
 
   if (!response.ok) {
@@ -256,24 +207,29 @@ async function getPortalFeed(request: FeedRequest) {
   const data = await response.json();
   const results = parseSearchResults(data, portal);
 
+  // Implement pagination
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const paginatedResults = results.results.slice(start, end);
+
   return {
     success: true,
     portal,
-    results: results.items,
+    results: paginatedResults,
     totalCount: results.totalCount,
     page,
     pageSize,
   };
 }
 
-async function getPublicationDetail(request: PublicationRequest) {
-  const { portal, publicationId } = request;
-  const url = `https://${portal}/api/Publication/${publicationId}`;
+async function getPublicationDetail(request: DetailRequest) {
+  const { portal, id } = request;
 
-  const response = await fetch(url, {
-    method: "GET",
+  const detailUrl = `https://${portal}/api/publication/${id}`;
+  const response = await fetch(detailUrl, {
     headers: {
       "Accept": "application/json",
+      "User-Agent": "MCP-Server/1.0",
     },
   });
 
@@ -286,35 +242,28 @@ async function getPublicationDetail(request: PublicationRequest) {
   return {
     success: true,
     portal,
-    publication: {
-      id: data.Id,
-      title: data.Title,
-      date: data.Date,
-      caseNumber: data.CaseNumber,
-      summary: data.Summary,
-      content: data.Content,
-      categories: data.Categories || [],
-      documentUrl: data.DocumentUrl,
-    },
+    id,
+    title: data.Title,
+    body: cleanHtml(data.Body),
+    publicationDate: data.PublicationDate,
+    caseNumber: data.CaseNumber,
+    categories: data.Categories || [],
+    url: `https://${portal}/${id}`,
   };
 }
 
-async function getPortalsList() {
+async function listPortals() {
   const portals = [
     {
       domain: "mfkn.naevneneshus.dk",
       name: "Miljø- og Fødevareklagenævnet",
-      description: "Afgørelser om miljø, natur, klima, landbrug og fødevarer",
-    },
-    {
-      domain: "pkn.naevneneshus.dk",
-      name: "Planklagenævnet",
-      description: "Afgørelser om fysisk planlægning",
-    },
-    {
-      domain: "ekn.naevneneshus.dk",
-      name: "Ekspropriations- og Planklagenævnet",
-      description: "Afgørelser om ekspropriation",
+      description: "Klageinstans for miljø- og fødevareområdet",
+      categories: [
+        "Miljøbeskyttelse",
+        "Naturbeskyttelse",
+        "Jordforurening",
+        "Vandløb",
+      ],
     },
   ];
 
@@ -336,24 +285,35 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
 }
 
 function parseSearchResults(data: any, portal: string) {
-  const items = (data.Items || []).map((item: any) => ({
+  const items = data.Items || [];
+  const totalCount = data.TotalCount || 0;
+
+  const results = items.map((item: any) => ({
     id: item.Id,
-    title: decodeHtml(item.Title || ""),
-    excerpt: decodeHtml(item.Excerpt || ""),
-    date: item.Date,
+    title: item.Title,
+    abstract: cleanHtml(item.Abstract || ""),
+    publicationDate: item.PublicationDate,
     caseNumber: item.CaseNumber,
-    category: item.Category,
-    url: `https://${portal}/Afgoerelser/Details/${item.Id}`,
+    categories: item.Categories || [],
+    url: `https://${portal}/${item.Id}`,
   }));
 
   return {
-    items,
-    totalCount: data.TotalCount || 0,
+    results,
+    totalCount,
   };
 }
 
-function decodeHtml(html: string): string {
+function cleanHtml(html: string): string {
+  if (!html) return "";
+
   return html
+    .replace(/<\/p>/g, "\n\n")
+    .replace(/<br\s*\/?>/g, "\n")
+    .replace(/<li>/g, "\n• ")
+    .replace(/<\/li>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -462,29 +422,15 @@ async function logQuery(supabase: any, data: any) {
     const logData: any = {
       portal: data.portal,
       query: data.query,
-      original_query: data.original_query,
       result_count: data.result_count,
       execution_time_ms: data.execution_time_ms,
     };
 
-    // Include optimized_query if it differs from query
-    if (data.optimized_query) {
-      logData.optimized_query = data.optimized_query;
-    }
-
-    // Include payload and response if present
-    if (data.search_payload) {
-      logData.search_payload = data.search_payload;
-    }
-
-    if (data.api_response) {
-      logData.api_response = data.api_response;
-    }
-
-    // Only include error_message if present
-    if (data.error_message) {
-      logData.error_message = data.error_message;
-    }
+    if (data.original_query) logData.original_query = data.original_query;
+    if (data.optimized_query) logData.optimized_query = data.optimized_query;
+    if (data.error_message) logData.error_message = data.error_message;
+    if (data.search_payload) logData.search_payload = data.search_payload;
+    if (data.api_response) logData.api_response = data.api_response;
 
     await supabase.from("query_logs").insert(logData);
   } catch (error) {
@@ -492,209 +438,29 @@ async function logQuery(supabase: any, data: any) {
   }
 }
 
-function detectAcronyms(text: string): Array<{acronym: string; context: string}> {
-  const acronymPattern = /\b[A-ZÆØÅ]{2,5}\b/g;
+function detectAcronyms(text: string): Array<{ acronym: string; context: string }> {
+  const acronymPattern = /\b[A-ZÆØÅ]{2,}\b/g;
   const matches = text.match(acronymPattern) || [];
-  
-  const uniqueAcronyms = new Set<string>();
-  const results: Array<{acronym: string; context: string}> = [];
+  const unique = [...new Set(matches)];
 
-  matches.forEach(acronym => {
-    if (!uniqueAcronyms.has(acronym)) {
-      uniqueAcronyms.add(acronym);
-      const index = text.indexOf(acronym);
-      const start = Math.max(0, index - 20);
-      const end = Math.min(text.length, index + acronym.length + 20);
-      const context = text.substring(start, end).trim();
-
-      results.push({ acronym, context });
-    }
-  });
-
-  return results;
+  return unique.map((acronym) => ({
+    acronym,
+    context: text,
+  }));
 }
 
-async function logAcronymSuggestions(supabase: any, portal: string, query: string, acronyms: Array<{acronym: string; context: string}>) {
-  if (!acronyms || acronyms.length === 0) return;
-
+async function logAcronyms(supabase: any, portal: string, acronyms: Array<{ acronym: string; context: string }>) {
   try {
-    const { data: existingAcronyms } = await supabase
-      .from("portal_acronyms")
-      .select("acronym")
-      .eq("portal", portal);
+    const suggestions = acronyms.map((item) => ({
+      portal,
+      suggestion_type: "acronym",
+      value: item.acronym,
+      context: item.context,
+      frequency: 1,
+    }));
 
-    const knownAcronyms = new Set((existingAcronyms || []).map((a: any) => a.acronym));
-    const unknownAcronyms = acronyms.filter(a => !knownAcronyms.has(a.acronym));
-
-    if (unknownAcronyms.length === 0) return;
-
-    const { data: pendingSuggestions } = await supabase
-      .from("suggested_acronyms")
-      .select("acronym")
-      .eq("portal", portal)
-      .eq("status", "pending")
-      .in("acronym", unknownAcronyms.map(a => a.acronym));
-
-    const alreadySuggested = new Set((pendingSuggestions || []).map((s: any) => s.acronym));
-
-    const newSuggestions = unknownAcronyms
-      .filter(a => !alreadySuggested.has(a.acronym))
-      .map(a => ({
-        portal,
-        acronym: a.acronym,
-        full_term_suggestion: null,
-        example_query: query,
-        suggested_by: "openwebui",
-      }));
-
-    if (newSuggestions.length > 0) {
-      await supabase.from("suggested_acronyms").insert(newSuggestions);
-    }
+    await supabase.from("metadata_suggestions").insert(suggestions);
   } catch (error) {
-    console.error("Failed to log acronym suggestions:", error);
+    console.error("Failed to log acronyms:", error);
   }
-}
-
-function generateOpenAPISpec() {
-  const baseUrl = Deno.env.get("SUPABASE_URL")?.replace("/rest/v1", "") + "/functions/v1/naevneneshus-mcp" || "";
-  
-  return {
-    openapi: "3.0.0",
-    info: {
-      title: "Nævneneshus MCP Server",
-      version: "1.2.0",
-      description: "MCP server for Danish administrative appeal boards with intelligent query optimization.",
-    },
-    servers: [
-      {
-        url: baseUrl,
-        description: "Production server",
-      },
-    ],
-    paths: {
-      "/search": {
-        post: {
-          operationId: "searchPortal",
-          summary: "Search publications on a portal",
-          description: "Search with automatic query optimization (removes stopwords and category acronyms).",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["portal", "query"],
-                  properties: {
-                    portal: {
-                      type: "string",
-                      description: "Portal domain",
-                      example: "mfkn.naevneneshus.dk",
-                    },
-                    query: {
-                      type: "string",
-                      description: "Search query",
-                      example: "Bevisbyrde MBL § 72 praksis",
-                    },
-                    originalQuery: {
-                      type: "string",
-                      description: "Original query before any optimization",
-                      example: "Find afgørelser om bevisbyrde ved MBL § 72",
-                    },
-                    page: {
-                      type: "integer",
-                      default: 1,
-                    },
-                    pageSize: {
-                      type: "integer",
-                      default: 10,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Search results",
-            },
-          },
-        },
-      },
-      "/feed": {
-        post: {
-          operationId: "getPortalFeed",
-          summary: "Get latest publications",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["portal"],
-                  properties: {
-                    portal: { type: "string" },
-                    page: { type: "integer", default: 1 },
-                    pageSize: { type: "integer", default: 10 },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Feed results",
-            },
-          },
-        },
-      },
-      "/publication": {
-        post: {
-          operationId: "getPublicationDetail",
-          summary: "Get publication details",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["portal", "publicationId"],
-                  properties: {
-                    portal: { type: "string" },
-                    publicationId: { type: "string" },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Publication details",
-            },
-          },
-        },
-      },
-      "/portals": {
-        get: {
-          operationId: "getPortalsList",
-          summary: "List available portals",
-          responses: {
-            "200": {
-              description: "List of portals",
-            },
-          },
-        },
-      },
-      "/health": {
-        get: {
-          operationId: "healthCheck",
-          summary: "Health check",
-          responses: {
-            "200": {
-              description: "Service status",
-            },
-          },
-        },
-      },
-    },
-  };
 }
