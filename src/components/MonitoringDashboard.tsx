@@ -32,6 +32,8 @@ interface QueryLog {
   created_at: string;
   search_payload?: any;
   api_response?: any;
+  raw_request?: any;
+  tool_response?: any;
 }
 
 interface Stats {
@@ -402,12 +404,20 @@ export function MonitoringDashboard() {
                           )}
                         </div>
 
-                        {(log.search_payload || log.api_response) && (
+                        {(log.raw_request || log.search_payload || log.api_response || log.tool_response) && (
                           <details className="mt-3">
                             <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 font-medium">
                               📋 Vis Payload & Response
                             </summary>
                             <div className="mt-2 space-y-3">
+                              {log.raw_request && (
+                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                                  <div className="text-xs font-semibold text-slate-700 mb-1">Original MCP-request:</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                    {JSON.stringify(log.raw_request, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
                               {log.search_payload && (
                                 <div className="bg-slate-50 p-3 rounded border border-slate-200">
                                   <div className="text-xs font-semibold text-slate-700 mb-1">Search Payload:</div>
@@ -421,6 +431,14 @@ export function MonitoringDashboard() {
                                   <div className="text-xs font-semibold text-slate-700 mb-1">API Response:</div>
                                   <pre className="text-xs text-slate-800 overflow-x-auto">
                                     {JSON.stringify(log.api_response, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {log.tool_response && (
+                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                                  <div className="text-xs font-semibold text-slate-700 mb-1">Svar tilbage til tool:</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                    {JSON.stringify(log.tool_response, null, 2)}
                                   </pre>
                                 </div>
                               )}
