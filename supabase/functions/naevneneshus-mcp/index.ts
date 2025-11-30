@@ -7,10 +7,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Api-Key",
 };
 
+const categoryCache: Record<string, PortalCategory[]> = {};
+
 interface SearchRequest {
   portal: string;
   query: string;
   originalQuery?: string;
+  originalRequest?: string;
   page?: number;
   pageSize?: number;
   filters?: {
@@ -35,6 +38,12 @@ interface FeedRequest {
 interface DetailRequest {
   portal: string;
   id: string;
+}
+
+interface PortalCategory {
+  category_id: string;
+  category_title: string;
+  aliases: string[];
 }
 
 Deno.serve(async (req: Request) => {
@@ -262,7 +271,11 @@ async function searchPortal(request: SearchRequest) {
   const pagination = (request as any).pagination || {};
   const portal = request.portal || 'mfkn.naevneneshus.dk';
   const query = request.query;
-  const originalQuery = request.originalQuery;
+  const originalQuery =
+    request.originalRequest ||
+    request.originalQuery ||
+    (request as any).original_request ||
+    query;
   const page = pagination.page || request.page || 1;
   const pageSize = pagination.pageSize || request.pageSize || 10;
   const filters = request.filters;
@@ -278,18 +291,34 @@ async function searchPortal(request: SearchRequest) {
   );
 
   try {
-    // Detect categories from acronyms in the query
-    const detectedCategoryInfo = await detectCategoryFromQuery(supabase, portal, query);
+    const today = new Date().toISOString().slice(0, 10);
+    const filtersWithDefaults = {
+      ...filters,
+      dateRange: {
+        start: filters?.dateRange?.start || '2022-01-01',
+        end: filters?.dateRange?.end || today,
+      },
+    };
+
+    const categories = await getPortalCategories(supabase, portal);
+
+    // Detect categories from acronyms in the query or explicit filter
+    const [detectedCategoryInfo, resolvedFilterCategory] = await Promise.all([
+      detectCategoryFromQuery(categories, originalQuery || query),
+      resolveCategoryFromFilter(categories, filtersWithDefaults.category),
+    ]);
+
+    const chosenCategory = resolvedFilterCategory || detectedCategoryInfo;
 
     // Merge detected category with existing filters
     const mergedFilters = {
-      ...filters,
-      category: detectedCategoryInfo?.id || filters?.category,
-      categoryTitle: detectedCategoryInfo?.title || filters?.categoryTitle,
+      ...filtersWithDefaults,
+      category: chosenCategory?.id || filtersWithDefaults.category,
+      categoryTitle: chosenCategory?.title || filtersWithDefaults.categoryTitle,
     };
 
     // Optimize the query further (removes stopwords and category acronyms)
-    const optimizedQuery = await optimizeQuery(supabase, portal, query);
+    const optimizedQuery = await optimizeQuery(categories, query);
 
     const searchPayload = buildSearchPayload(optimizedQuery, page, pageSize, mergedFilters);
     const searchUrl = `https://${portal}/api/Search`;
@@ -335,7 +364,7 @@ async function searchPortal(request: SearchRequest) {
     // Auto-detect acronyms if not provided
     let acronymsToLog = detectedAcronyms;
     if (!acronymsToLog || acronymsToLog.length === 0) {
-      acronymsToLog = detectAcronyms(query);
+      acronymsToLog = detectAcronyms(originalQuery || query);
     }
 
     // Log detected acronyms
@@ -440,24 +469,148 @@ async function getPublicationDetail(request: DetailRequest) {
 }
 
 async function listPortals() {
-  const portals = [
-    {
-      domain: "mfkn.naevneneshus.dk",
-      name: "Miljø- og Fødevareklagenævnet",
-      description: "Klageinstans for miljø- og fødevareområdet",
-      categories: [
-        "Miljøbeskyttelse",
-        "Naturbeskyttelse",
-        "Jordforurening",
-        "Vandløb",
-      ],
-    },
-  ];
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
+  const { data: portals, error } = await supabase
+    .from('portal_metadata')
+    .select('portal, name, domain_focus')
+    .order('portal');
+
+  if (error || !portals) {
+    console.error('Failed to load portal metadata:', error);
+    return {
+      success: true,
+      portals: [],
+    };
+  }
+
+  const withCategories = await Promise.all(
+    portals.map(async (portal) => {
+      const categories = await getPortalCategories(supabase, portal.portal);
+
+      return {
+        domain: portal.portal,
+        name: portal.name,
+        description: portal.domain_focus || '',
+        categories: categories.map(c => c.category_title),
+      };
+    })
+  );
 
   return {
     success: true,
-    portals,
+    portals: withCategories,
   };
+}
+
+async function getPortalCategories(supabase: any, portal: string): Promise<PortalCategory[]> {
+  if (categoryCache[portal]) {
+    return categoryCache[portal];
+  }
+
+  try {
+    const response = await fetch(`https://${portal}/api/SiteSettings`, {
+      headers: {
+        "Accept": "application/json",
+        "User-Agent": "MCP-Server/1.0",
+      },
+    });
+
+    if (response.ok) {
+      const settings = await response.json();
+      const topics = settings?.topics || settings?.Topics || [];
+
+      const categoriesFromSettings: PortalCategory[] = (topics || [])
+        .map((item: any) => ({
+          category_id: item.id || item.Id || item.topicId,
+          category_title: item.title || item.Title || item.name || item.Name,
+          aliases: generateAliases(item.title || item.Title || item.name || item.Name || ""),
+        }))
+        .filter((item: PortalCategory) => Boolean(item.category_id && item.category_title));
+
+      if (categoriesFromSettings.length > 0) {
+        categoryCache[portal] = categoriesFromSettings;
+
+        // Store latest categories for monitoring/analytics purposes
+        try {
+          await Promise.all(
+            categoriesFromSettings.map((category) =>
+              supabase.from('site_categories').upsert(
+                {
+                  portal,
+                  category_id: category.category_id,
+                  category_title: category.category_title,
+                  aliases: category.aliases,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'portal,category_id' }
+              )
+            )
+          );
+        } catch (error) {
+          console.error('Failed to upsert categories from SiteSettings:', error);
+        }
+
+        return categoriesFromSettings;
+      }
+    } else {
+      console.warn(`SiteSettings returned status ${response.status} for ${portal}`);
+    }
+  } catch (error) {
+    console.error(`Failed to fetch SiteSettings for ${portal}:`, error);
+  }
+
+  try {
+    const { data: categories } = await supabase
+      .from('site_categories')
+      .select('category_id, category_title, aliases')
+      .eq('portal', portal);
+
+    categoryCache[portal] = categories || [];
+    return categories || [];
+  } catch (error) {
+    console.error('Failed to load categories from Supabase:', error);
+    return [];
+  }
+}
+
+function generateAliases(title: string): string[] {
+  if (!title) return [];
+
+  const aliases: string[] = [title];
+
+  const abbreviationMap: Record<string, string[]> = {
+    'Miljøbeskyttelsesloven': ['MBL', 'Miljøbeskyttelse'],
+    'Naturbeskyttelsesloven': ['NBL', 'Naturbeskyttelse'],
+    'Planloven': ['PL'],
+    'Husdyrloven': ['HDL'],
+    'Råstofloven': ['RL'],
+    'Jordforureningsloven': ['JFL'],
+    'Vandløbsloven': ['VL'],
+    'Skovloven': ['SL'],
+  };
+
+  for (const [fullName, abbrevs] of Object.entries(abbreviationMap)) {
+    if (title.includes(fullName)) {
+      aliases.push(...abbrevs);
+    }
+  }
+
+  const words = title.split(/\s+/);
+  if (words.length > 1) {
+    const acronym = words
+      .map(w => w[0])
+      .join('')
+      .toUpperCase();
+    if (acronym.length >= 2 && acronym.length <= 5) {
+      aliases.push(acronym);
+    }
+  }
+
+  return [...new Set(aliases)];
 }
 
 function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any) {
@@ -470,6 +623,13 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
     sort: filters?.sort ?? 0,
     parameters: [],
   };
+
+  if (filters?.dateRange?.start || filters?.dateRange?.end) {
+    payload.dateRange = {
+      start: filters?.dateRange?.start,
+      end: filters?.dateRange?.end,
+    };
+  }
 
   // Only include category if it's a valid UUID (not strings like "ruling")
   const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -523,13 +683,34 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
-async function detectCategoryFromQuery(supabase: any, portal: string, query: string): Promise<{ id: string; title: string } | null> {
-  try {
-    const { data: categories } = await supabase
-      .from('site_categories')
-      .select('category_id, category_title, aliases')
-      .eq('portal', portal);
+async function resolveCategoryFromFilter(categories: PortalCategory[], categoryValue?: string): Promise<{ id: string; title: string } | null> {
+  if (!categoryValue || typeof categoryValue !== 'string') return null;
 
+  try {
+    const normalizedFilter = categoryValue.toLowerCase();
+
+    for (const category of categories) {
+      if (category.category_id.toLowerCase() === normalizedFilter || category.category_title.toLowerCase() === normalizedFilter) {
+        return { id: category.category_id, title: category.category_title };
+      }
+
+      const aliases = category.aliases || [];
+      const aliasMatch = aliases.some((alias: string) => alias.toLowerCase() === normalizedFilter);
+
+      if (aliasMatch) {
+        return { id: category.category_id, title: category.category_title };
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to resolve filter category:', error);
+    return null;
+  }
+}
+
+async function detectCategoryFromQuery(categories: PortalCategory[], query: string): Promise<{ id: string; title: string } | null> {
+  try {
     if (!categories || categories.length === 0) return null;
 
     const queryLower = query.toLowerCase();
@@ -566,7 +747,7 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
   }
 }
 
-async function optimizeQuery(supabase: any, portal: string, query: string): Promise<string> {
+async function optimizeQuery(categories: PortalCategory[], query: string): Promise<string> {
   try {
     const stopwords = [
       'praksis', 'afgørelse', 'afgørelser', 'kendelse', 'kendelser',
@@ -575,20 +756,13 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       'og', 'eller', 'samt', 'i', 'af', 'på', 'med', 'fra'
     ];
 
-    const { data: categories } = await supabase
-      .from('site_categories')
-      .select('aliases')
-      .eq('portal', portal);
-
     const categoryTerms = new Set<string>();
-    if (categories) {
-      categories.forEach((cat: any) => {
-        (cat.aliases || []).forEach((alias: string) => {
-          categoryTerms.add(alias.toLowerCase());
-          categoryTerms.add(alias.toUpperCase());
-        });
+    categories.forEach((cat: any) => {
+      (cat.aliases || []).forEach((alias: string) => {
+        categoryTerms.add(alias.toLowerCase());
+        categoryTerms.add(alias.toUpperCase());
       });
-    }
+    });
 
     let optimized = query;
     for (const term of categoryTerms) {
