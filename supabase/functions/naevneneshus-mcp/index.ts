@@ -609,35 +609,32 @@ function generateAliases(title: string): string[] {
 }
 
 function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any) {
-  const skip = (page - 1) * pageSize;
-
-  const payload: any = {
-    term: query,
-    skip,
-    take: pageSize,
-    sort: filters?.sort ?? 0,
-    parameters: [],
-  };
+  const normalizedFilters: any = {};
 
   if (filters?.dateRange?.start || filters?.dateRange?.end) {
-    payload.dateRange = {
+    normalizedFilters.dateRange = {
       start: filters?.dateRange?.start,
       end: filters?.dateRange?.end,
     };
   }
 
-  // Only include category if it's a valid UUID (not strings like "ruling")
-  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (filters?.category && isValidUUID.test(filters.category)) {
-    payload.categories = [{
-      id: filters.category,
-      title: filters.categoryTitle || ''
-    }];
-  } else {
-    payload.categories = [];
+  // Preserve category filters (accepting both UUIDs and string identifiers such as "ruling")
+  if (filters?.category) {
+    normalizedFilters.category = filters.category;
   }
 
-  return payload;
+  if (filters?.categoryTitle) {
+    normalizedFilters.categoryTitle = filters.categoryTitle;
+  }
+
+  return {
+    query,
+    ...(Object.keys(normalizedFilters).length > 0 ? { filters: normalizedFilters } : {}),
+    pagination: {
+      page,
+      pageSize,
+    },
+  };
 }
 
 function parseSearchResults(data: any, portal: string) {
