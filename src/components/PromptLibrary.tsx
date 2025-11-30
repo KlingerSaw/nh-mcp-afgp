@@ -452,16 +452,16 @@ Hvis brugeren eksplicit angiver kategori med syntaks "kategori:" eller "lovområ
 1. Find teksten efter "kategori:" eller "lovområde:"
 2. Match mod tilgængelige kategorier (både fulde navne og akronymer)
 3. Fjern hele "kategori: [navn]" fra query
-4. Tilføj til filters.category i værktøjskaldet
+4. Tilføj som "category" parameter direkte i værktøjskaldet (IKKE i filters)
 
 Eksempler på kategori-detektion:
 - "PFAS-forurening, kategori: jordforureningsloven"
   → query: "PFAS-forurening"
-  → filters.category: "Jordforureningsloven"
+  → category: "Jordforureningsloven"
 
 - "støj vindmøller, lovområde: MBL"
   → query: "støj vindmøller"
-  → filters.category: "Miljøbeskyttelsesloven" (akronym matchet)
+  → category: "Miljøbeskyttelsesloven" (akronym matchet)
 
 Matching regler:
 - Case-insensitive: "jordforureningsloven" = "Jordforureningsloven"
@@ -477,14 +477,12 @@ Uden kategori:
   "portal": "${portalDomain}"
 }
 
-Med kategori:
+Med kategori (VIGTIGT: category er direkte parameter, ikke i filters):
 {
   "query": "PFAS-forurening",
   "detectedAcronym": null,
   "portal": "${portalDomain}",
-  "filters": {
-    "category": "Jordforureningsloven"
-  }
+  "category": "Jordforureningsloven"
 }
 
 ✅ KOMPLETTE EKSEMPLER
@@ -542,7 +540,7 @@ Input: "PFAS-forurening, kategori: jordforureningsloven"
 3. Identificér: PFAS → Intet match i akronym-tabel
 4. Detektér kategori: "kategori: jordforureningsloven" → Match "Jordforureningsloven"
 5. Fjern kategori-tekst: "PFAS-forurening"
-6. Kald: {"query": "PFAS-forurening", "detectedAcronym": null, "filters": {"category": "Jordforureningsloven"}}
+6. Kald: {"query": "PFAS-forurening", "detectedAcronym": null, "category": "Jordforureningsloven"}
 
 Eksempel 7:
 Input: "bevisbyrde ved olieforurening, lovområde: JFL"
@@ -552,7 +550,7 @@ Input: "bevisbyrde ved olieforurening, lovområde: JFL"
 3. Intet akronym i query (JFL er kategori, ikke del af query)
 4. Detektér kategori: "lovområde: JFL" → Match akronym "JFL" til "Jordforureningsloven"
 5. Fjern kategori-tekst: "bevisbyrde olieforurening"
-6. Kald: {"query": "bevisbyrde olieforurening", "detectedAcronym": null, "filters": {"category": "Jordforureningsloven"}}
+6. Kald: {"query": "bevisbyrde olieforurening", "detectedAcronym": null, "category": "Jordforureningsloven"}
 
 ⚠️ VIGTIGE REGLER
 
@@ -560,7 +558,7 @@ Input: "bevisbyrde ved olieforurening, lovområde: JFL"
 - Brug din sprogforståelse: Er det en profession/rolle eller en del af søgeemnet?
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
-- Hvis kategori specificeres med "kategori:" eller "lovområde:", match og tilføj til filters.category
+- Hvis kategori specificeres med "kategori:" eller "lovområde:", match og tilføj som "category" parameter (IKKE i filters)
 - Fjern kategori-syntaks fra query (behold kun søgeemnet)
 - Behold § henvisninger i query
 - Brug "page_size" 5, medmindre andet ønskes
@@ -639,11 +637,11 @@ Sådan gør du:
 - Sæt "portal"="${portal}" og "page_size"=5 (medmindre brugeren beder om andet).
 - Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
 - Ved opfølgningsspørgsmål: kombiner tidligere + ny query
-- Hvis bruger skriver "kategori: [navn]" eller "lovområde: [navn]", tilføj filters.category
+- Hvis bruger skriver "kategori: [navn]" eller "lovområde: [navn]", send som "category" parameter
 
-Kategori-parsing:
-- "PFAS, kategori: jordforureningsloven" → query="PFAS", filters.category="Jordforureningsloven"
-- "støj, lovområde: MBL" → query="støj", filters.category="Miljøbeskyttelsesloven"
+Kategori-parsing (VIGTIGT: category er direkte parameter, ikke i filters):
+- "PFAS, kategori: jordforureningsloven" → query="PFAS", category="Jordforureningsloven"
+- "støj, lovområde: MBL" → query="støj", category="Miljøbeskyttelsesloven"
 
 📊 Præsentation af Resultater:
 - START med: "Viser resultat X-Y af Z resultater:"
