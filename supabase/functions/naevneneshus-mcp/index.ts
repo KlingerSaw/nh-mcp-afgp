@@ -50,7 +50,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { operation, ...params } = await req.json();
+    // Read request body
+    const contentType = req.headers.get('content-type') || '';
+    console.log('Content-Type:', contentType);
+    
+    const bodyText = await req.text();
+    console.log('Raw body:', bodyText);
+    
+    if (!bodyText || bodyText.trim() === '') {
+      throw new Error('Request body is empty');
+    }
+    
+    const { operation, ...params } = JSON.parse(bodyText);
+    console.log('Operation:', operation);
+    console.log('Params:', JSON.stringify(params));
 
     let result;
     switch (operation) {
@@ -81,6 +94,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
       }),
       {
         status: 500,
