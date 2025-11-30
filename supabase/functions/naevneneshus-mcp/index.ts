@@ -202,13 +202,26 @@ async function searchPortal(request: SearchRequest) {
 async function getPortalFeed(request: FeedRequest) {
   const { portal, page = 1, pageSize = 10 } = request;
 
-  const feedUrl = `https://${portal}/api/publications?sort=date&order=desc&page=${page}&pageSize=${pageSize}`;
+  const skip = (page - 1) * pageSize;
+  const feedPayload = {
+    query: "",
+    skip,
+    size: pageSize,
+    categories: [],
+    types: [],
+    sort: "Score",
+  };
+
+  const feedUrl = `https://${portal}/api/Search`;
 
   const response = await fetch(feedUrl, {
+    method: "POST",
     headers: {
       "Accept": "application/json",
+      "Content-Type": "application/json",
       "User-Agent": "MCP-Server/1.0",
     },
+    body: JSON.stringify(feedPayload),
   });
 
   if (!response.ok) {
@@ -231,9 +244,10 @@ async function getPortalFeed(request: FeedRequest) {
 async function getPublicationDetail(request: PublicationRequest) {
   const { portal, publicationId } = request;
 
-  const detailUrl = `https://${portal}/api/publications/${publicationId}`;
+  const detailUrl = `https://${portal}/api/Publication/${publicationId}`;
 
   const response = await fetch(detailUrl, {
+    method: "GET",
     headers: {
       "Accept": "application/json",
       "User-Agent": "MCP-Server/1.0",
@@ -247,6 +261,8 @@ async function getPublicationDetail(request: PublicationRequest) {
   const data = await response.json();
 
   const cleanBody = data.body ? stripHtml(data.body) : "";
+  const categories = (data.categories && data.categories.length > 0) ? data.categories.join(", ") : "ikke oplyst";
+  const journalNumbers = (data.jnr && data.jnr.length > 0) ? data.jnr.join(", ") : "ikke oplyst";
 
   return {
     success: true,
@@ -254,11 +270,11 @@ async function getPublicationDetail(request: PublicationRequest) {
     publicationId,
     title: data.title,
     body: cleanBody,
-    abstract: data.abstract,
+    abstract: data.abstract || "",
     metadata: {
-      category: data.category,
-      date: data.publicationDate,
-      journalNumber: data.journalNumber,
+      category: categories,
+      date: data.date || data.ruling_date || data.published_date || "ikke oplyst",
+      journalNumber: journalNumbers,
     },
     link: `https://${portal}/publications/${publicationId}`,
   };
