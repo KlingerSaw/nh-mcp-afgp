@@ -472,6 +472,18 @@ export function MonitoringDashboard() {
                             <div className="text-sm text-slate-600 mt-2">
                               Portal: <span className="font-mono text-xs">{log.portal}</span>
                             </div>
+                            {log.raw_request?.detected_category && (
+                              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
+                                <span className="font-semibold text-emerald-700">📂 Kategori:</span>
+                                <span className="text-emerald-800">{log.raw_request.detected_category.title}</span>
+                                <span className="text-emerald-600">
+                                  ({log.raw_request.detected_category.source === 'explicit_syntax' ? 'parsed fra query' :
+                                    log.raw_request.detected_category.source === 'ai_acronym' ? 'AI detekteret' :
+                                    log.raw_request.detected_category.source === 'server_detected' ? 'server detekteret' :
+                                    'filter parameter'})
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <span className="text-xs text-slate-500 ml-4">
                             {formatRelativeTime(log.created_at)}

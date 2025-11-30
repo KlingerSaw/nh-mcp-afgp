@@ -447,26 +447,26 @@ ${acronymTable || '  (ingen akronymer registreret)'}
 Trin 4: Fjern akronym fra query
 "Bevisbyrde MBL § 72" → "Bevisbyrde § 72"
 
-Trin 5: Detektér kategori-filter (valgfrit)
+Trin 5: Kategori-filter (valgfrit - MCP serveren håndterer alt parsing)
 Hvis brugeren eksplicit angiver kategori med syntaks "kategori:" eller "lovområde:":
-1. Find teksten efter "kategori:" eller "lovområde:"
-2. Match mod tilgængelige kategorier (både fulde navne og akronymer)
-3. Fjern hele "kategori: [navn]" fra query
-4. Tilføj som "category" parameter direkte i værktøjskaldet (IKKE i filters)
+1. BEHOLD kategori-syntaksen i query'en - fjern den IKKE
+2. Send hele strengen uændret til værktøjet
+3. MCP serveren parser automatisk kategorien og fjerner den fra søgningen
 
-Eksempler på kategori-detektion:
+Eksempler:
 - "PFAS-forurening, kategori: jordforureningsloven"
-  → query: "PFAS-forurening"
-  → category: "Jordforureningsloven"
+  → Send præcis denne string som query
+  → Serveren parser kategori og søger kun på "PFAS-forurening"
 
 - "støj vindmøller, lovområde: MBL"
-  → query: "støj vindmøller"
-  → category: "Miljøbeskyttelsesloven" (akronym matchet)
+  → Send præcis denne string som query
+  → Serveren parser "MBL" til "Miljøbeskyttelsesloven"
 
-Matching regler:
-- Case-insensitive: "jordforureningsloven" = "Jordforureningsloven"
-- Match både fulde navne OG akronymer: "JFL" = "Jordforureningsloven"
-- Se kategori-liste nederst for gyldige værdier
+VIGTIGT: Du skal IKKE parse eller fjerne kategori-syntaksen selv. Serveren håndterer:
+- Parsing af "kategori:" eller "lovområde:" syntaks
+- Matching af akronymer (JFL → Jordforureningsloven)
+- Fjernelse af kategori-tekst fra søgningen
+- Tilføjelse af kategori-filter i API request
 
 📞 VÆRKTØJSKALD
 
@@ -477,13 +477,14 @@ Uden kategori:
   "portal": "${portalDomain}"
 }
 
-Med kategori (VIGTIGT: category er direkte parameter, ikke i filters):
+Med kategori (VIGTIGT: Send kategori-syntaks direkte i query):
 {
-  "query": "PFAS-forurening",
+  "query": "PFAS-forurening, kategori: jordforureningsloven",
   "detectedAcronym": null,
-  "portal": "${portalDomain}",
-  "category": "Jordforureningsloven"
+  "portal": "${portalDomain}"
 }
+
+Serveren håndterer parsing automatisk - du sender bare den rå query.
 
 ✅ KOMPLETTE EKSEMPLER
 
@@ -538,19 +539,17 @@ Input: "PFAS-forurening, kategori: jordforureningsloven"
 1. Ingen stopwords at fjerne
 2. Ingen §
 3. Identificér: PFAS → Intet match i akronym-tabel
-4. Detektér kategori: "kategori: jordforureningsloven" → Match "Jordforureningsloven"
-5. Fjern kategori-tekst: "PFAS-forurening"
-6. Kald: {"query": "PFAS-forurening", "detectedAcronym": null, "category": "Jordforureningsloven"}
+4. Kategori-syntaks fundet: BEHOLD i query (serveren parser den)
+5. Kald: {"query": "PFAS-forurening, kategori: jordforureningsloven", "detectedAcronym": null}
 
 Eksempel 7:
 Input: "bevisbyrde ved olieforurening, lovområde: JFL"
 0. Ingen rollebeskrivelse detekteret
-1. Fjern: ved → "bevisbyrde olieforurening lovområde JFL"
+1. Fjern: ved → "bevisbyrde olieforurening, lovområde: JFL"
 2. Ingen §
-3. Intet akronym i query (JFL er kategori, ikke del af query)
-4. Detektér kategori: "lovområde: JFL" → Match akronym "JFL" til "Jordforureningsloven"
-5. Fjern kategori-tekst: "bevisbyrde olieforurening"
-6. Kald: {"query": "bevisbyrde olieforurening", "detectedAcronym": null, "category": "Jordforureningsloven"}
+3. Intet akronym fundet (JFL er del af kategori-syntaks, ikke query)
+4. Kategori-syntaks fundet: BEHOLD i query (serveren parser "JFL" automatisk)
+5. Kald: {"query": "bevisbyrde olieforurening, lovområde: JFL", "detectedAcronym": null}
 
 ⚠️ VIGTIGE REGLER
 
@@ -558,8 +557,7 @@ Input: "bevisbyrde ved olieforurening, lovområde: JFL"
 - Brug din sprogforståelse: Er det en profession/rolle eller en del af søgeemnet?
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
-- Hvis kategori specificeres med "kategori:" eller "lovområde:", match og tilføj som "category" parameter (IKKE i filters)
-- Fjern kategori-syntaks fra query (behold kun søgeemnet)
+- Hvis kategori specificeres med "kategori:" eller "lovområde:", BEHOLD syntaksen i query - serveren parser den
 - Behold § henvisninger i query
 - Brug "page_size" 5, medmindre andet ønskes
 - Sæt "page" hvis brugeren beder om næste side

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { parseCategoryFromQuery } from "./categoryParser.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,7 +65,6 @@ Deno.serve(async (req: Request) => {
     headers: req.headers,
   };
 
-  // Serve OpenAPI spec at /openapi.json
   if (url.pathname.endsWith('/openapi.json')) {
     const spec = getOpenAPISpec();
 
@@ -86,11 +86,9 @@ Deno.serve(async (req: Request) => {
     let operation: string;
     let params: any;
 
-    // Handle both GET and POST requests
     if (req.method === "GET") {
       operation = url.searchParams.get('operation') || 'listPortals';
       
-      // Parse params from URL
       params = {};
       for (const [key, value] of url.searchParams.entries()) {
         if (key !== 'operation') {
@@ -100,7 +98,6 @@ Deno.serve(async (req: Request) => {
       
       console.log('GET request - Operation:', operation, 'Params:', params);
     } else {
-      // POST request
       const bodyText = await req.text();
       console.log('POST - Raw body:', bodyText);
       
@@ -110,7 +107,6 @@ Deno.serve(async (req: Request) => {
       
       const parsed = JSON.parse(bodyText);
 
-      // If operation is specified, use it; otherwise default to searchPortal for Open WebUI compatibility
       operation = parsed.operation || 'searchPortal';
       params = parsed;
       delete params.operation;
@@ -300,7 +296,6 @@ function getOpenAPISpec() {
 async function searchPortal(request: SearchRequest) {
   const startTime = Date.now();
 
-  // Handle both direct params and nested pagination object (Open WebUI format)
   const pagination = (request as any).pagination || {};
   const portal = request.portal || 'mfkn.naevneneshus.dk';
   const query = request.query;
@@ -341,32 +336,65 @@ async function searchPortal(request: SearchRequest) {
 
     const categories = await getPortalCategories(supabase, portal);
 
-    // 1. Match AI's detected acronym to category GUID
+    const explicitCategoryParse = parseCategoryFromQuery(query, categories);
+    let finalQueryForSearch = query;
+    let detectedCategory = null;
+
+    if (explicitCategoryParse) {
+      detectedCategory = {
+        id: explicitCategoryParse.categoryId,
+        title: explicitCategoryParse.categoryTitle,
+        source: 'explicit_syntax',
+        matched_value: explicitCategoryParse.matchedValue,
+      };
+      finalQueryForSearch = explicitCategoryParse.cleanedQuery;
+      console.log(`Parsed explicit category: "${explicitCategoryParse.matchedValue}" → ${explicitCategoryParse.categoryTitle}`);
+      console.log(`Cleaned query: "${finalQueryForSearch}"`);
+    }
+
     let categoryInfo = null;
     let aiMissedAcronym = false;
 
-    if (aiDetectedAcronym) {
+    if (!detectedCategory && aiDetectedAcronym) {
       categoryInfo = await matchAcronymToCategory(categories, aiDetectedAcronym);
 
       if (!categoryInfo) {
-        // Log unknown acronym for admin review
-        await logUnknownAcronym(supabase, portal, aiDetectedAcronym, query);
+        await logUnknownAcronym(supabase, portal, aiDetectedAcronym, finalQueryForSearch);
+      } else {
+        detectedCategory = {
+          id: categoryInfo.id,
+          title: categoryInfo.title,
+          source: 'ai_acronym',
+          matched_value: aiDetectedAcronym,
+        };
       }
     }
 
-    // 2. Fallback: Check if AI missed an acronym in query
-    if (!categoryInfo) {
-      categoryInfo = await detectCategoryFromQuery(categories, query);
+    if (!detectedCategory) {
+      categoryInfo = await detectCategoryFromQuery(categories, finalQueryForSearch);
       if (categoryInfo && !aiDetectedAcronym) {
         aiMissedAcronym = true;
+        detectedCategory = {
+          id: categoryInfo.id,
+          title: categoryInfo.title,
+          source: 'server_detected',
+          matched_value: 'auto-detected',
+        };
       }
     }
 
-    // 3. Check for explicit filter category
     const resolvedFilterCategory = await resolveCategoryFromFilter(categories, filtersWithDefaults.category);
-    const chosenCategory = resolvedFilterCategory || categoryInfo;
+    if (resolvedFilterCategory && !detectedCategory) {
+      detectedCategory = {
+        id: resolvedFilterCategory.id,
+        title: resolvedFilterCategory.title,
+        source: 'filter_parameter',
+        matched_value: filtersWithDefaults.category,
+      };
+    }
 
-    // Merge detected category with existing filters
+    const chosenCategory = detectedCategory;
+
     const mergedFilters = {
       ...filtersWithDefaults,
       category: chosenCategory?.id || filtersWithDefaults.category,
@@ -382,13 +410,12 @@ async function searchPortal(request: SearchRequest) {
       detected_acronyms: detectedAcronyms,
       ai_detected_acronym: aiDetectedAcronym,
       ai_missed_acronym: aiMissedAcronym,
+      detected_category: detectedCategory,
     };
 
-    // 4. Use AI's query directly if already optimized, otherwise optimize
-    let finalQuery = query;
-    if (categoryInfo && !aiDetectedAcronym) {
-      // AI didn't optimize, so we need to do it
-      finalQuery = await optimizeQuery(categories, query);
+    let finalQuery = finalQueryForSearch;
+    if (categoryInfo && !aiDetectedAcronym && !explicitCategoryParse) {
+      finalQuery = await optimizeQuery(categories, finalQueryForSearch);
     }
 
     const searchPayload = buildSearchPayload(finalQuery, page, pageSize, mergedFilters);
@@ -415,7 +442,6 @@ async function searchPortal(request: SearchRequest) {
     const results = parseSearchResults(data, portal, finalQuery);
     const executionTime = Date.now() - startTime;
 
-    // Auto-detect acronyms if not provided
     let acronymsToLog = detectedAcronyms;
     if (!acronymsToLog || acronymsToLog.length === 0) {
       acronymsToLog = detectAcronyms(originalQuery || query);
@@ -434,7 +460,6 @@ async function searchPortal(request: SearchRequest) {
       executionTime,
     };
 
-    // Log the query with optimization tracking and payload/response
     await logQuery(supabase, {
       portal,
       query,
@@ -453,7 +478,6 @@ async function searchPortal(request: SearchRequest) {
       ai_missed_acronym: aiMissedAcronym,
     });
 
-    // Log detected acronyms
     if (acronymsToLog && acronymsToLog.length > 0) {
       await logAcronyms(supabase, portal, acronymsToLog);
     }
@@ -503,7 +527,6 @@ async function getLatestPublications(request: FeedRequest) {
   const data = await response.json();
   const results = parseSearchResults(data, portal);
 
-  // Implement pagination
   const start = (page - 1) * pageSize;
   const end = start + pageSize;
   const paginatedResults = results.results.slice(start, end);
@@ -626,7 +649,6 @@ async function getPortalCategories(supabase: any, portal: string): Promise<Porta
       if (categoriesFromSettings.length > 0) {
         categoryCache[portal] = categoriesFromSettings;
 
-        // Store latest categories for monitoring/analytics purposes
         try {
           await Promise.all(
             categoriesFromSettings.map((category) =>
@@ -715,7 +737,6 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
     };
   }
 
-  // Preserve category filters (accepting both UUIDs and string identifiers such as "ruling")
   if (filters?.category) {
     normalizedFilters.category = filters.category;
   }
@@ -748,7 +769,6 @@ function parseSearchResults(data: any, portal: string, query?: string) {
 
     const fallbackPath = type === "news" ? `nyhed/${id}` : `afgoerelse/${id}`;
 
-    // Construct URL with highlight parameter for rulings
     let url: string;
     if (type === "ruling" && query) {
       const encodedQuery = encodeURIComponent(query);
@@ -756,7 +776,6 @@ function parseSearchResults(data: any, portal: string, query?: string) {
     } else if (type === "news") {
       url = `https://${portal}/nyhed/${id}`;
     } else {
-      // Fallback to existing URL logic
       url = buildPortalUrl(
         portal,
         item.url ||
@@ -767,7 +786,6 @@ function parseSearchResults(data: any, portal: string, query?: string) {
       );
     }
 
-    // Clean body content from abstract or body field
     const rawBody = item.body || item.Body || item.abstract || item.Abstract || "";
     const MAX_BODY_LENGTH = 1000;
     const cleanBodyFull = cleanHtml(rawBody);
@@ -899,7 +917,6 @@ async function optimizeQuery(categories: PortalCategory[], query: string): Promi
       optimized = optimized.replace(regex, '');
     }
 
-    // Remove duplicate paragraph references before splitting into words
     const seenParagraphs = new Set<string>();
     const paragraphPattern = /§\s*\d+(?:-[^\s]+)?/g;
 
@@ -908,17 +925,16 @@ async function optimizeQuery(categories: PortalCategory[], query: string): Promi
       if (!baseNum) return match;
 
       if (seenParagraphs.has(baseNum)) {
-        return ''; // Remove duplicate
+        return '';
       }
 
       seenParagraphs.add(baseNum);
 
-      // Check if this paragraph reference has a compound with stopword (e.g., § 72-praksis)
       const parts = match.split('-');
       if (parts.length > 1) {
         const suffix = parts[1].replace(/[.,!?;:]$/, '').toLowerCase();
         if (stopwords.includes(suffix)) {
-          return baseNum; // Keep only the base paragraph number, remove the stopword compound
+          return baseNum;
         }
       }
 
@@ -927,19 +943,16 @@ async function optimizeQuery(categories: PortalCategory[], query: string): Promi
 
     let words = optimized.split(/\s+/).filter(w => w.length > 0);
 
-    // Filter remaining words: remove stopwords and compound words with stopwords
     words = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:\-]$/, '').toLowerCase();
       const baseWord = cleanWord.split('-')[0];
 
-      // Check if any part of a compound word (separated by hyphen) is a stopword
       const parts = word.split('-');
       const hasStopwordPart = parts.some(part => {
         const cleanPart = part.replace(/[.,!?;:]$/, '').toLowerCase();
         return stopwords.includes(cleanPart);
       });
 
-      // If the word contains a stopword part, skip it entirely
       if (stopwords.includes(cleanWord) || stopwords.includes(baseWord) || hasStopwordPart) {
         return false;
       }

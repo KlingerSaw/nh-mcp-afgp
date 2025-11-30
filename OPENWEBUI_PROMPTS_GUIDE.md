@@ -147,7 +147,8 @@ Hver prompt indeholder:
 
 ✅ **DO:**
 - Vær specifik: "støj fra vejanlæg" > "støj"
-- Brug kategorier: "søgning, kategori: Miljøbeskyttelsesloven"
+- Brug kategorier: "søgning, kategori: Miljøbeskyttelsesloven" eller "søgning, lovområde: MBL"
+- MCP serveren parser automatisk kategori-syntaks og fjerner den fra søgningen
 - Bed om næste side: "vis flere" eller "side 2"
 - Omformuler ved ingen resultater
 
