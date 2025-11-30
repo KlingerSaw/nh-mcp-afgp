@@ -507,39 +507,40 @@ export function MonitoringDashboard() {
                         </div>
 
                         {(log.raw_request || log.search_payload || log.api_response || log.tool_response) && (
-                          <details className="mt-3">
-                            <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 font-medium">
-                              📋 Vis Payload & Response
+                          <details className="mt-3 bg-slate-100 rounded-lg p-3 border border-slate-300">
+                            <summary className="cursor-pointer text-sm font-semibold text-slate-700 hover:text-blue-700 transition flex items-center gap-2">
+                              <span className="text-base">📋</span>
+                              Vis Request Payload & API Response
                             </summary>
-                            <div className="mt-2 space-y-3">
+                            <div className="mt-3 space-y-3">
                               {log.raw_request && (
-                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                  <div className="text-xs font-semibold text-slate-700 mb-1">Original MCP-request:</div>
-                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                <div className="bg-white p-3 rounded border border-blue-200">
+                                  <div className="text-xs font-bold text-blue-700 mb-2 uppercase tracking-wide">🔹 Original MCP Request</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto font-mono bg-slate-50 p-2 rounded">
                                     {JSON.stringify(log.raw_request, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.search_payload && (
-                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                  <div className="text-xs font-semibold text-slate-700 mb-1">Search Payload:</div>
-                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                <div className="bg-white p-3 rounded border border-green-200">
+                                  <div className="text-xs font-bold text-green-700 mb-2 uppercase tracking-wide">📤 Request Payload til API</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto font-mono bg-slate-50 p-2 rounded">
                                     {JSON.stringify(log.search_payload, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.api_response && (
-                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                  <div className="text-xs font-semibold text-slate-700 mb-1">API Response:</div>
-                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                <div className="bg-white p-3 rounded border border-orange-200">
+                                  <div className="text-xs font-bold text-orange-700 mb-2 uppercase tracking-wide">📥 Response fra API</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto font-mono bg-slate-50 p-2 rounded">
                                     {JSON.stringify(log.api_response, null, 2)}
                                   </pre>
                                 </div>
                               )}
                               {log.tool_response && (
-                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
-                                  <div className="text-xs font-semibold text-slate-700 mb-1">Svar tilbage til tool:</div>
-                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                <div className="bg-white p-3 rounded border border-purple-200">
+                                  <div className="text-xs font-bold text-purple-700 mb-2 uppercase tracking-wide">🔙 Svar tilbage til Tool</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto font-mono bg-slate-50 p-2 rounded">
                                     {JSON.stringify(log.tool_response, null, 2)}
                                   </pre>
                                 </div>
