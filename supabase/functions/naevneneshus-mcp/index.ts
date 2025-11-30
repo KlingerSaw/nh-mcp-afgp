@@ -140,13 +140,17 @@ async function searchPortal(request: SearchRequest) {
   );
 
   try {
-    const searchUrl = buildSearchUrl(portal, query, page, pageSize, filters);
+    const searchPayload = buildSearchPayload(query, page, pageSize, filters);
+    const searchUrl = `https://${portal}/api/Search`;
 
     const response = await fetch(searchUrl, {
+      method: "POST",
       headers: {
         "Accept": "application/json",
+        "Content-Type": "application/json",
         "User-Agent": "MCP-Server/1.0",
       },
+      body: JSON.stringify(searchPayload),
     });
 
     if (!response.ok) {
@@ -279,45 +283,42 @@ async function getPortalsList() {
   };
 }
 
-function buildSearchUrl(
-  portal: string,
+function buildSearchPayload(
   query: string,
   page: number,
   pageSize: number,
   filters?: SearchRequest["filters"]
-): string {
-  const params = new URLSearchParams();
-  params.set("q", query);
-  params.set("page", page.toString());
-  params.set("pageSize", pageSize.toString());
+): any {
+  const skip = (page - 1) * pageSize;
+
+  const payload: any = {
+    query,
+    skip,
+    size: pageSize,
+    categories: [],
+    types: [],
+    sort: "Score",
+  };
 
   if (filters?.category) {
-    params.set("category", filters.category);
+    payload.categories = [filters.category];
   }
 
-  if (filters?.dateRange?.start) {
-    params.set("dateFrom", filters.dateRange.start);
-  }
-
-  if (filters?.dateRange?.end) {
-    params.set("dateTo", filters.dateRange.end);
-  }
-
-  return `https://${portal}/api/search?${params.toString()}`;
+  return payload;
 }
 
 function parseSearchResults(data: any, portal: string) {
-  const items = data.results || data.items || data.publications || [];
+  const items = data.publications || data.results || data.items || [];
   const totalCount = data.totalCount || data.total || items.length;
 
   const parsedItems = items.map((item: any) => ({
-    id: item.id || item.publicationId,
+    id: item.id,
     title: item.title,
-    abstract: item.abstract || item.summary || "",
-    category: item.category || "ikke oplyst",
-    date: item.publicationDate || item.date || "ikke oplyst",
-    journalNumber: item.journalNumber || item.caseNumber || "ikke oplyst",
-    link: item.link || `https://${portal}/publications/${item.id || item.publicationId}`,
+    abstract: item.abstract || "",
+    category: (item.categories && item.categories.length > 0) ? item.categories.join(", ") : "ikke oplyst",
+    date: item.date || item.ruling_date || item.published_date || "ikke oplyst",
+    journalNumber: (item.jnr && item.jnr.length > 0) ? item.jnr.join(", ") : "ikke oplyst",
+    link: `https://${portal}/publications/${item.id}`,
   }));
 
   return {
