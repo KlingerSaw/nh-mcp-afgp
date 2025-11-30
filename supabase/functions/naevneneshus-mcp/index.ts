@@ -4,7 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey, X-Api-Key",
 };
 
 interface SearchRequest {
@@ -45,13 +45,24 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const url = new URL(req.url);
+  
+  // Serve OpenAPI spec at /openapi.json
+  if (url.pathname.endsWith('/openapi.json')) {
+    return new Response(JSON.stringify(getOpenAPISpec(), null, 2), {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
+    });
+  }
+
   try {
     let operation: string;
     let params: any;
 
     // Handle both GET and POST requests
     if (req.method === "GET") {
-      const url = new URL(req.url);
       operation = url.searchParams.get('operation') || 'listPortals';
       
       // Parse params from URL
@@ -121,6 +132,143 @@ Deno.serve(async (req: Request) => {
     );
   }
 });
+
+function getOpenAPISpec() {
+  return {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "Nævneneshus MCP Search API",
+      "description": "API til søgning i Danmarks administrative klage- og ankesystem. Søg i afgørelser fra Miljø- og Fødevareklagenævnet (MFKN) og andre nævn. Understøtter intelligent query optimering, kategoridetektion og akronymhåndtering.",
+      "version": "1.0.0"
+    },
+    "servers": [
+      {
+        "url": "https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp",
+        "description": "Production server"
+      }
+    ],
+    "paths": {
+      "/": {
+        "post": {
+          "operationId": "searchPortal",
+          "summary": "Søg i afgørelser fra nævn",
+          "description": "Søg i afgørelser med intelligent query optimering. API'et detekterer automatisk kategorier fra akronymer (f.eks. MBL, NBL) og optimerer søgetermer ved at fjerne stopwords og redundans.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["operation", "portal", "query"],
+                  "properties": {
+                    "operation": {
+                      "type": "string",
+                      "enum": ["searchPortal"],
+                      "description": "Operation type"
+                    },
+                    "portal": {
+                      "type": "string",
+                      "enum": ["mfkn.naevneneshus.dk"],
+                      "description": "Portal domæne (brug 'mfkn.naevneneshus.dk' for Miljø- og Fødevareklagenævnet)"
+                    },
+                    "query": {
+                      "type": "string",
+                      "description": "Søgetekst. Kan indeholde akronymer (MBL, NBL), paragrafhenvisninger (§ 72), eller fulde termer. API'et optimerer automatisk."
+                    },
+                    "page": {
+                      "type": "integer",
+                      "default": 1,
+                      "description": "Side nummer for pagination"
+                    },
+                    "pageSize": {
+                      "type": "integer",
+                      "default": 10,
+                      "description": "Antal resultater per side"
+                    }
+                  }
+                },
+                "examples": {
+                  "miljøbeskyttelse": {
+                    "summary": "Søg med akronym (MBL)",
+                    "value": {
+                      "operation": "searchPortal",
+                      "portal": "mfkn.naevneneshus.dk",
+                      "query": "Bevisbyrde ved MBL § 72"
+                    }
+                  },
+                  "naturbeskyttelse": {
+                    "summary": "Søg i naturbeskyttelsesloven",
+                    "value": {
+                      "operation": "searchPortal",
+                      "portal": "mfkn.naevneneshus.dk",
+                      "query": "NBL § 3 strandbeskyttelse"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Succesfuld søgning",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean"
+                      },
+                      "portal": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "type": "string",
+                        "description": "Optimeret søgequery"
+                      },
+                      "originalQuery": {
+                        "type": "string",
+                        "description": "Original søgequery"
+                      },
+                      "results": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {"type": "string"},
+                            "title": {"type": "string"},
+                            "abstract": {"type": "string"},
+                            "publicationDate": {"type": "string"},
+                            "caseNumber": {"type": "string"},
+                            "categories": {"type": "array", "items": {"type": "string"}},
+                            "url": {"type": "string"}
+                          }
+                        }
+                      },
+                      "totalCount": {
+                        "type": "integer"
+                      },
+                      "page": {
+                        "type": "integer"
+                      },
+                      "pageSize": {
+                        "type": "integer"
+                      },
+                      "executionTime": {
+                        "type": "integer",
+                        "description": "Eksekveringstid i millisekunder"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  };
+}
 
 async function searchPortal(request: SearchRequest) {
   const startTime = Date.now();
@@ -367,7 +515,6 @@ function cleanHtml(html: string): string {
 
 async function detectCategoryFromQuery(supabase: any, portal: string, query: string): Promise<string | null> {
   try {
-    // Get all categories for this portal
     const { data: categories } = await supabase
       .from('site_categories')
       .select('category_id, category_title, aliases')
@@ -375,26 +522,21 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
 
     if (!categories || categories.length === 0) return null;
 
-    // Normalize query for matching
     const queryLower = query.toLowerCase();
     const queryUpper = query.toUpperCase();
     const queryWords = query.split(/\s+/);
 
-    // Check each category
     for (const category of categories) {
       const aliases = category.aliases || [];
 
-      // Check if any alias matches in the query
       for (const alias of aliases) {
         const aliasLower = alias.toLowerCase();
         const aliasUpper = alias.toUpperCase();
 
-        // Match acronyms (uppercase words like "MBL", "NBL")
         const isAcronymMatch = queryWords.some(word =>
           word.toUpperCase() === aliasUpper && /^[A-ZÆØÅ]+$/.test(alias)
         );
 
-        // Match full names (case-insensitive substring match)
         const isFullNameMatch = queryLower.includes(aliasLower) && alias.length > 3;
 
         if (isAcronymMatch || isFullNameMatch) {
@@ -413,7 +555,6 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
 
 async function optimizeQuery(supabase: any, portal: string, query: string): Promise<string> {
   try {
-    // Define stopwords - words that don't add search value
     const stopwords = [
       'praksis', 'afgørelse', 'afgørelser', 'kendelse', 'kendelser',
       'dom', 'domme', 'sag', 'sager', 'om', 'ved', 'for', 'til',
@@ -421,13 +562,11 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       'og', 'eller', 'samt'
     ];
 
-    // Get all category aliases to remove them from query (they're now in filters.category)
     const { data: categories } = await supabase
       .from('site_categories')
       .select('aliases')
       .eq('portal', portal);
 
-    // Build set of all category-related terms to remove
     const categoryTerms = new Set<string>();
     if (categories) {
       categories.forEach((cat: any) => {
@@ -438,32 +577,27 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       });
     }
 
-    // Remove category terms from query (substring removal for multi-word terms)
     let optimized = query;
     for (const term of categoryTerms) {
       const regex = new RegExp(`\\b${term}\\b`, 'gi');
       optimized = optimized.replace(regex, '');
     }
 
-    // Split into words and remove stopwords
     let words = optimized.split(/\s+/).filter(w => w.length > 0);
     words = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:]$/, '').toLowerCase();
       return !stopwords.includes(cleanWord);
     });
 
-    // Remove duplicate paragraph references (§ 72-praksis when we have § 72)
     words = words.filter((word, index, arr) => {
-      // If word contains §, check if it's a duplicate reference
       if (word.includes('§')) {
         const baseNum = word.match(/§\s*\d+/)?.[0];
         if (baseNum) {
-          // Check if this exact base number exists elsewhere
           const isDuplicate = arr.some((other, otherIndex) =>
             otherIndex !== index &&
             other.includes('§') &&
             other.match(/§\s*\d+/)?.[0] === baseNum &&
-            other.length < word.length // Keep shorter version
+            other.length < word.length
           );
           return !isDuplicate;
         }
@@ -473,11 +607,10 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
 
     optimized = words.join(' ').trim();
 
-    // Return optimized query or original if optimization made it empty
     return optimized.length > 0 ? optimized : query;
   } catch (error) {
     console.error('Failed to optimize query:', error);
-    return query; // Return original on error
+    return query;
   }
 }
 
