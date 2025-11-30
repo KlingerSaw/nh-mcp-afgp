@@ -98,7 +98,8 @@ export function PromptLibrary() {
 
   const currentPortal = portals.find(p => p.portal === selectedPortal);
   const portalName = currentPortal?.name || selectedPortal;
-  const operationId = `search_${selectedPortal.replace(/[^a-z0-9]/gi, '_')}`;
+  // Tool name from OpenAPI spec: https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
+  const operationId = 'Afgp';
 
   const systemPrompt = generateSystemPrompt(
     portalName,
@@ -355,7 +356,7 @@ export function PromptLibrary() {
 function generateSystemPrompt(
   portalName: string,
   portalDomain: string,
-  _operationId: string,
+  operationId: string,
   categories: Category[],
   legalAreas: LegalArea[],
   _acronyms: Acronym[]
@@ -365,7 +366,7 @@ function generateSystemPrompt(
 
   return `SYSTEM PROMPT — ${portalName} Search Tool Caller
 
-Du skal altid kalde værktøjet "search_${portalDomain.replace(/[^a-z0-9]/gi, '_')}" for at søge på ${portalName} (${portalDomain}).
+Du skal altid kalde værktøjet "${operationId}" for at søge på ${portalName} (${portalDomain}).
 
 Regler
 - Brug brugerens besked som søgetekst og kald værktøjet med argumentet "query".
@@ -400,10 +401,10 @@ Resultater:
 • Link: https://${portalDomain}/afgoerelse/...`;
 }
 
-function generateQuickGuide(portalName: string, _operationId: string, portal: string): string {
+function generateQuickGuide(portalName: string, operationId: string, portal: string): string {
   return `QUICK GUIDE – ${portalName}
 
-Rolle: Kald værktøjet "search_${portal.replace(/[^a-z0-9]/gi, '_')}" med brugerens søgetekst og returnér værktøjets formaterede svar.
+Rolle: Kald værktøjet "${operationId}" med brugerens søgetekst og returnér værktøjets formaterede svar.
 
 Sådan gør du:
 - Brug brugerens tekst som "query"-argument.
