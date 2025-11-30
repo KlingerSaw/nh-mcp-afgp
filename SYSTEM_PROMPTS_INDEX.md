@@ -6,32 +6,37 @@
 
 ---
 
-## 📚 Tilgængelige System Prompts
+## 📚 Dynamisk Genererede System Prompts
 
-Dette projekt inkluderer færdige system prompts til alle danske administrative nævn. Hver prompt er optimeret til OpenWebUI og klar til copy-paste.
+ALLE system prompts genereres dynamisk via dashboardet baseret på portal-specifikke data fra Supabase.
 
-### Hovedportaler (Dedikerede Filer)
-
-| Portal | Fil | Værktøjsnavn | Fokusområde |
-|--------|-----|--------------|-------------|
-| **MFKN** – Miljø- og Fødevareklagenævnet | [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md) | `search_mfkn_naevneneshus_dk` | Miljøbeskyttelse, jordforurening, naturbeskyttelse |
-| **EKN** – Energiklagenævnet | [EKN_SYSTEM_PROMPT.md](./EKN_SYSTEM_PROMPT.md) | `search_ekn_naevneneshus_dk` | Vindmøller, solenergi, elforsyning |
-| **PKN** – Planklagenævnet | [PKN_SYSTEM_PROMPT.md](./PKN_SYSTEM_PROMPT.md) | `search_pkn_naevneneshus_dk` | Lokalplaner, landzonetilladelser, sommerhuse |
-
-### Alle Portaler (Via Dashboard)
+### Tilgængelige Portaler
 
 Brug **Prompts** tab i dashboardet for at generere prompts for:
 
-- FKN – Forbrugerklagenævnet
-- DKBB – Disciplinær- og klagenævnet for beskikkede bygningssagkyndige
-- DNFE – Disciplinærnævnet for Ejendomsmæglere
-- KLFU – Klagenævnet for Udbud
-- TELE – Teleklagenævnet
-- RN – Revisornævnet
-- APV – Ankenævnet for Patenter og Varemærker
-- TVIST – Tvistighedsnævnet
-- EAN – Erhvervsankenævnet
-- BYF – Byfornyelsesnævnene
+| Portal | Værktøjsnavn | Fokusområde |
+|--------|--------------|-------------|
+| **MFKN** – Miljø- og Fødevareklagenævnet | `search_mfkn_naevneneshus_dk` | Miljøbeskyttelse, jordforurening, naturbeskyttelse |
+| **EKN** – Energiklagenævnet | `search_ekn_naevneneshus_dk` | Vindmøller, solenergi, elforsyning |
+| **PKN** – Planklagenævnet | `search_pkn_naevneneshus_dk` | Lokalplaner, landzonetilladelser, sommerhuse |
+| **FKN** – Forbrugerklagenævnet | `search_fkn_naevneneshus_dk` | Forbrugerklager |
+| **DKBB** – Disciplinær- og klagenævnet | `search_dkbb_naevneneshus_dk` | Bygningssagkyndige |
+| **DNFE** – Disciplinærnævnet for Ejendomsmæglere | `search_dnfe_naevneneshus_dk` | Ejendomsmæglere |
+| **KLFU** – Klagenævnet for Udbud | `search_klfu_naevneneshus_dk` | Offentlige udbud |
+| **TELE** – Teleklagenævnet | `search_tele_naevneneshus_dk` | Telekommunikation |
+| **RN** – Revisornævnet | `search_rn_naevneneshus_dk` | Revisorer |
+| **APV** – Ankenævnet for Patenter og Varemærker | `search_apv_naevneneshus_dk` | Patenter, varemærker |
+| **TVIST** – Tvistighedsnævnet | `search_tvist_naevneneshus_dk` | Arbejdsmarked |
+| **EAN** – Erhvervsankenævnet | `search_ean_naevneneshus_dk` | Erhvervsforhold |
+| **BYF** – Byfornyelsesnævnene | `search_byf_naevneneshus_dk` | Byfornyelse |
+
+### Fordele ved Dynamisk Generering
+
+✅ **Altid opdateret** – Når database opdateres, opdateres prompts automatisk
+✅ **Konsistent** – Samme struktur på tværs af alle portaler
+✅ **Portal-specifik** – Kategorier, lovområder og akronymer hentes fra database
+✅ **Copy-paste klar** – En klik til at kopiere komplet prompt
+✅ **Download option** – Download som .txt fil
 
 ---
 
@@ -56,20 +61,22 @@ Brug **Prompts** tab i dashboardet for at generere prompts for:
 3. Følg instructions for External Tool setup
 4. Kopier URL, OpenAPI path og Bearer token
 
-### 2. Vælg System Prompt
+### 2. Generer System Prompt
 
-**For MFKN:**
-1. Åbn [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md)
-2. Kopier hele prompten (fra "🧩 SYSTEM PROMPT" til slutningen)
-3. Gå til OpenWebUI → Settings → Models → Vælg model → System Prompt
-4. Indsæt prompten
-5. Klik Save
+**Via Dashboard (Anbefalet):**
+1. Åbn dashboardet: `npm run dev` eller besøg deployed version
+2. Gå til "Prompts" tab
+3. Vælg portal fra dropdown
+4. Kopier system prompt med "Kopier" knappen
+5. Gå til OpenWebUI → Settings → Models → Vælg model → System Prompt
+6. Indsæt prompten
+7. Klik Save
 
-**For andre portaler:**
-1. Brug dashboardet: Gå til "Prompts" tab
-2. Vælg portal fra dropdown
-3. Kopier system prompt med "Kopier" knappen
-4. Indsæt i OpenWebUI som beskrevet ovenfor
+**Fordele:**
+- Prompts opdateres automatisk med nye kategorier og lovområder
+- Portal-specifik metadata (akronymer, eksempler)
+- Konsistent struktur på tværs af alle portaler
+- Download som .txt fil option
 
 ### 3. Test
 
@@ -85,22 +92,18 @@ AI'en kalder automatisk det rigtige værktøj og præsenterer strukturerede resu
 
 ## 📖 Detaljeret Dokumentation
 
-### For MFKN (Mest Kompleks)
+### Dynamisk Prompt Generering
 
-Se [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md) for:
-- Komplet system prompt
-- Alle lovområder og kategorier
-- Akronym-liste
-- Installation guide
-- Eksempel-forespørgsler
-- Fejlfinding
+Alle prompts genereres via dashboardet i **Prompts** tab baseret på:
+- **portal_metadata** tabel – portal-navne og beskrivelser
+- **site_categories** tabel – tilgængelige kategorier per portal
+- **legal_areas** tabel – lovområder per portal (hvor tilgængeligt)
+- **portal_acronyms** tabel – almindelige forkortelser per portal (hvor tilgængeligt)
 
-### For Andre Portaler
-
-- [EKN_SYSTEM_PROMPT.md](./EKN_SYSTEM_PROMPT.md) – Energiklagenævnet
-- [PKN_SYSTEM_PROMPT.md](./PKN_SYSTEM_PROMPT.md) – Planklagenævnet
-
-Eller brug dashboardet til at generere prompts dynamisk baseret på database-data.
+Hver portal får:
+- Portal-specifikt system prompt
+- Hurtig guide til OpenWebUI setup
+- Eksempel-forespørgsler baseret på kategori-data
 
 ---
 

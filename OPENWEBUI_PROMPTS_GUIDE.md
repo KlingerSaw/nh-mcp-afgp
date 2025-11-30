@@ -10,31 +10,33 @@ Dette projekt giver dig **færdige, copy-paste klare system prompts** til alle d
 
 ---
 
-## 📚 Tilgængelige Prompts
+## 📚 Dynamisk Genererede Prompts
 
-### I Dashboard (Anbefalet)
+**ALLE prompts genereres dynamisk** via dashboardet baseret på portal-specifikke data fra Supabase.
 
-1. Åbn dashboardet: `npm run dev`
+### Sådan Genereres Prompts
+
+1. Åbn dashboardet: `npm run dev` eller besøg deployed version
 2. Klik på **"Prompts"** tab
-3. Vælg portal fra dropdown
+3. Vælg portal fra dropdown (13 portaler tilgængelige)
 4. Klik **"Kopier"** på System Prompt
 5. Indsæt i OpenWebUI
 
-**Fordele:**
-- ✅ Altid opdateret med seneste kategorier og lovområder
-- ✅ Genereret dynamisk fra database
-- ✅ Inkluderer portal-specifikke eksempler
-- ✅ En klik til at kopiere
+### Fordele ved Dynamisk Generering
 
-### Som Markdown Filer
+- ✅ **Altid opdateret** – Når database opdateres med nye kategorier, opdateres prompts automatisk
+- ✅ **Portal-specifik** – Hver portal får unikke kategorier, lovområder og akronymer fra database
+- ✅ **Konsistent struktur** – Samme format på tværs af alle 13 portaler
+- ✅ **Eksempler inkluderet** – Portal-specifikke søge-eksempler genereres automatisk
+- ✅ **En klik til at kopiere** – Kopier direkte til clipboard
+- ✅ **Download option** – Download som .txt fil
 
-**Hovedportaler:**
-- [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md) – Miljø- og Fødevareklagenævnet
-- [EKN_SYSTEM_PROMPT.md](./EKN_SYSTEM_PROMPT.md) – Energiklagenævnet
-- [PKN_SYSTEM_PROMPT.md](./PKN_SYSTEM_PROMPT.md) – Planklagenævnet
+### Tilgængelige Portaler
 
-**Alle portaler:**
-- Se [SYSTEM_PROMPTS_INDEX.md](./SYSTEM_PROMPTS_INDEX.md) for komplet oversigt
+Alle 13 danske administrative nævn understøttes:
+- MFKN, EKN, PKN, FKN, DKBB, DNFE, KLFU, TELE, RN, APV, TVIST, EAN, BYF
+
+Se [SYSTEM_PROMPTS_INDEX.md](./SYSTEM_PROMPTS_INDEX.md) for komplet oversigt
 
 ---
 
@@ -65,21 +67,17 @@ cat .env
 
 ### Trin 2: Vælg System Prompt (For hver model)
 
-**Metode A: Via Dashboard (Anbefalet)**
+**Via Dashboard (Kun Metode)**
 
-1. Åbn: http://localhost:5173
+1. Åbn: http://localhost:5173 eller deployed version
 2. Gå til **"Prompts"** tab
-3. Vælg portal (fx MFKN)
+3. Vælg portal fra dropdown (fx MFKN, EKN, PKN osv.)
 4. Klik **"Kopier"** under System Prompt
 5. Gå til OpenWebUI → Settings → Models → Vælg model → System Prompt
 6. Indsæt prompten
 7. Klik Save
 
-**Metode B: Via Markdown Fil**
-
-1. Åbn [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md)
-2. Kopier prompten (fra "🧩 SYSTEM PROMPT" til slutningen)
-3. Indsæt i OpenWebUI som beskrevet ovenfor
+**Bemærk:** Alle prompts genereres dynamisk fra database - ingen statiske filer
 
 ### Trin 3: Test
 
@@ -98,45 +96,33 @@ AI'en skulle nu:
 
 ## 📖 For Hver Portal
 
-### MFKN (Miljø- og Fødevare)
+### Eksempler for Udvalgte Portaler
 
-**Værktøj:** `search_mfkn_naevneneshus_dk`
+**MFKN (Miljø- og Fødevare)**
+- Værktøj: `search_mfkn_naevneneshus_dk`
+- Typiske søgninger: "Find afgørelser om støj", "Søg jordforurening", "PFAS-forurening"
+- Prompt: Generer via Dashboard → Prompts tab
 
-**Typiske søgninger:**
-- "Find afgørelser om støj"
-- "Søg jordforurening, kategori: Jordforureningsloven"
-- "Hvad siger praksis om § 72"
-- "Find PFAS-forurening"
+**EKN (Energi)**
+- Værktøj: `search_ekn_naevneneshus_dk`
+- Typiske søgninger: "Find afgørelser om vindmøller", "Søg solcelleanlæg", "netadgang"
+- Prompt: Generer via Dashboard → Prompts tab
 
-**Prompt:** [MFKN_SYSTEM_PROMPT.md](./MFKN_SYSTEM_PROMPT.md)
+**PKN (Plan)**
+- Værktøj: `search_pkn_naevneneshus_dk`
+- Typiske søgninger: "Find afgørelser om lokalplaner", "landzonetilladelser", "§ 35"
+- Prompt: Generer via Dashboard → Prompts tab
 
-### EKN (Energi)
-
-**Værktøj:** `search_ekn_naevneneshus_dk`
-
-**Typiske søgninger:**
-- "Find afgørelser om vindmøller"
-- "Søg solcelleanlæg"
-- "Hvad siger praksis om netadgang"
-
-**Prompt:** [EKN_SYSTEM_PROMPT.md](./EKN_SYSTEM_PROMPT.md)
-
-### PKN (Plan)
-
-**Værktøj:** `search_pkn_naevneneshus_dk`
-
-**Typiske søgninger:**
-- "Find afgørelser om lokalplaner"
-- "Søg landzonetilladelser"
-- "Hvad siger praksis om § 35"
-
-**Prompt:** [PKN_SYSTEM_PROMPT.md](./PKN_SYSTEM_PROMPT.md)
-
-### Alle Andre Portaler
+### Alle 13 Portaler
 
 Brug **Prompts** tab i dashboardet til at generere prompts for:
+**MFKN, EKN, PKN, FKN, DKBB, DNFE, KLFU, TELE, RN, APV, TVIST, EAN, BYF**
 
-FKN, DKBB, DNFE, KLFU, TELE, RN, APV, TVIST, EAN, BYF
+Hver portal får automatisk:
+- Portal-specifikke kategorier
+- Lovområder (hvor tilgængeligt)
+- Akronymer (hvor tilgængeligt)
+- Eksempel-forespørgsler
 
 ---
 
