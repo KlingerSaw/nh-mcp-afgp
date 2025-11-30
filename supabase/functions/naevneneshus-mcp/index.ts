@@ -917,7 +917,27 @@ async function logQuery(supabase: any, data: any) {
     if (data.tool_response) logData.tool_response = data.tool_response;
     if (data.user_identifier) logData.user_identifier = data.user_identifier;
 
-    await supabase.from("query_logs").insert(logData);
+    const { error } = await supabase.from("query_logs").insert(logData);
+
+    if (error) {
+      console.error("Failed to log query with full payload:", error);
+
+      const fallbackLog = {
+        portal: data.portal,
+        query: data.query,
+        filters: data.filters ?? {},
+        result_count: data.result_count ?? 0,
+        execution_time_ms: data.execution_time_ms ?? 0,
+        error_message: data.error_message || null,
+        user_identifier: data.user_identifier,
+      };
+
+      const { error: fallbackError } = await supabase.from("query_logs").insert(fallbackLog);
+
+      if (fallbackError) {
+        console.error("Fallback query log insert failed:", fallbackError);
+      }
+    }
   } catch (error) {
     console.error("Failed to log query:", error);
   }
