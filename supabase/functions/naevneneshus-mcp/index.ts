@@ -372,8 +372,9 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
     // Define stopwords - words that don't add search value
     const stopwords = [
       'praksis', 'afgørelse', 'afgørelser', 'kendelse', 'kendelser',
-      'dom', 'domme', 'sag', 'sager', 'om', 'ved', 'om', 'for', 'til',
-      'søgning', 'find', 'vise', 'vis', 'alle'
+      'dom', 'domme', 'sag', 'sager', 'om', 'ved', 'for', 'til',
+      'søgning', 'søg', 'find', 'finde', 'vise', 'vis', 'alle',
+      'og', 'eller', 'samt'
     ];
 
     // Get all category aliases to remove them from query (they're now in filters.category)
@@ -405,6 +406,25 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
     words = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:]$/, '').toLowerCase();
       return !stopwords.includes(cleanWord);
+    });
+
+    // Remove duplicate paragraph references (§ 72-praksis when we have § 72)
+    words = words.filter((word, index, arr) => {
+      // If word contains §, check if it's a duplicate reference
+      if (word.includes('§')) {
+        const baseNum = word.match(/§\s*\d+/)?.[0];
+        if (baseNum) {
+          // Check if this exact base number exists elsewhere
+          const isDuplicate = arr.some((other, otherIndex) =>
+            otherIndex !== index &&
+            other.includes('§') &&
+            other.match(/§\s*\d+/)?.[0] === baseNum &&
+            other.length < word.length // Keep shorter version
+          );
+          return !isDuplicate;
+        }
+      }
+      return true;
     });
 
     optimized = words.join(' ').trim();
