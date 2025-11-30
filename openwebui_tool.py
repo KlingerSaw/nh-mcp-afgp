@@ -78,16 +78,20 @@ class Tools:
             full_query = f"{query}, kategori: {category}"
 
         # Build request payload for MCP endpoint
+        # Explicitly include the portal and originalRequest so the MCP server
+        # can log the correct portal/query combination in the monitoring UI.
         payload = {
+            "portal": portal,
             "query": full_query,
             "page": page,
             "pageSize": min(page_size, 50),  # Cap at 50
+            "originalRequest": query,
         }
 
         try:
             # Call MCP endpoint (includes automatic logging to database)
             response = requests.post(
-                f"{self.mcp_url}/mcp/{portal}",
+                self.mcp_url,
                 json=payload,
                 headers=self.headers,
                 timeout=30
