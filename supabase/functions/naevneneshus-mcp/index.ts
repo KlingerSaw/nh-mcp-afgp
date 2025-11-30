@@ -404,7 +404,7 @@ async function searchPortal(request: SearchRequest) {
     }
 
     const data = await response.json();
-    const results = parseSearchResults(data, portal);
+    const results = parseSearchResults(data, portal, finalQuery);
     const executionTime = Date.now() - startTime;
 
     // Auto-detect acronyms if not provided
@@ -726,7 +726,7 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
   };
 }
 
-function parseSearchResults(data: any, portal: string) {
+function parseSearchResults(data: any, portal: string, query?: string) {
   const items = data.publications || data.Items || [];
   const totalCount = data.totalCount || data.TotalCount || 0;
 
@@ -740,23 +740,40 @@ function parseSearchResults(data: any, portal: string) {
 
     const fallbackPath = type === "news" ? `nyhed/${id}` : `afgoerelse/${id}`;
 
-    return {
-      id,
-      type,
-      title: item.title || item.Title,
-      abstract: cleanHtml(item.abstract || item.Abstract || ""),
-      highlights: item.highlights || [],
-      publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
-      caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
-      categories: item.categories || item.Categories || [],
-      url: buildPortalUrl(
+    // Construct URL with highlight parameter for rulings
+    let url: string;
+    if (type === "ruling" && query) {
+      const encodedQuery = encodeURIComponent(query);
+      url = `https://${portal}/afgoerelse/${id}?highlight=${encodedQuery}`;
+    } else if (type === "news") {
+      url = `https://${portal}/nyhed/${id}`;
+    } else {
+      // Fallback to existing URL logic
+      url = buildPortalUrl(
         portal,
         item.url ||
           item.Url ||
           item.publicationUrl ||
           item.PublicationUrl ||
           fallbackPath
-      ),
+      );
+    }
+
+    // Clean body content from abstract or body field
+    const rawBody = item.body || item.Body || item.abstract || item.Abstract || "";
+    const cleanBody = cleanHtml(rawBody);
+
+    return {
+      id,
+      type,
+      title: item.title || item.Title,
+      abstract: cleanHtml(item.abstract || item.Abstract || ""),
+      cleanBody,
+      highlights: (item.highlights || []).map((h: string) => cleanHtml(h)),
+      publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
+      caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
+      categories: item.categories || item.Categories || [],
+      url,
     };
   });
 

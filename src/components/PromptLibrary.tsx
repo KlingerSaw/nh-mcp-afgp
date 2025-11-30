@@ -432,13 +432,34 @@ Input: "støj fra vindmøller"
 
 📊 PRÆSENTATION AF RESULTATER
 
-Værktøjet returnerer formateret tekst. Du skal:
-1. Returnér svaret DIREKTE uden modificering
-2. Fjern HTML entities (ø, æ, å osv.)
-3. Ingen JSON-blokke eller kodeformattering
-4. Bevar alle bullet points (•) og separatorer (───)
-5. Bevar linjespring og formatering
-6. Vis alle links som klikbare
+Værktøjet returnerer struktureret data med følgende felter per resultat:
+- id: Unik identifikator
+- type: "ruling" (Afgørelse) eller "news" (Nyhed)
+- url: Komplet URL klar til brug (allerede konstrueret med highlight-parameter for afgørelser)
+- title: Titel
+- cleanBody: Rent tekstindhold uden HTML (klar til læsning og sammenfatning)
+- publicationDate: Udgivelsesdato
+- caseNumber: Sagsnummer (hvis relevant)
+- categories: Kategorier
+- highlights: Relevante tekstuddrag
+
+Dit job er at:
+1. Læs cleanBody-feltet for hvert resultat
+2. Lav en kort, naturlig sammenfatning (2-3 sætninger) på dansk
+3. Præsentér hvert resultat som:
+   • **[Titel](url)** (Type: Afgørelse/Nyhed)
+   • Din AI-genererede sammenfatning baseret på cleanBody
+   • Dato og sagsnummer hvis relevant
+   • Adskil resultater med en blank linje
+
+4. Brug URL'en direkte fra result.url - den er allerede konstrueret korrekt
+5. For afgørelser indeholder URL'en automatisk highlight-parameter
+6. For nyheder er URL'en uden highlight-parameter
+
+Eksempel format:
+**[Ophævelse af påbud om støjmåling](https://mfkn.naevneneshus.dk/afgoerelse/3597d8c0-bb7e-4e82-949f-8e54aee99914?highlight=Bevisbyrde%20%C2%A7%2072)** (Type: Afgørelse)
+Miljø- og Fødevareklagenævnet ophævede Varde Kommunes påbud om støjmåling fra en skydebane. Sagen omhandler anvendelse af miljøbeskyttelseslovens § 72 vedrørende bevisbyrde.
+Dato: 29-02-2024 | Sagsnr: 22/00421
 
 Kategorier fra portalen (reference):
 ${categoryList || '  • (ingen kategorier registreret)'}`;
@@ -455,11 +476,12 @@ Sådan gør du:
 - Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
 
 📊 Præsentation af Resultater:
-- Returnér værktøjets svar DIREKTE uden modificering
-- Fjern HTML-encoding i svaret (ø, æ, å osv.)
-- Ingen JSON eller kodeblokke
-- Bevar bullet points (•), separatorer (───) og linjespring
-- Vis links som klikbare`;
+- Læs cleanBody fra hvert resultat
+- Lav AI-genererede sammenfatninger (2-3 sætninger)
+- Brug result.url direkte som link (allerede korrekt konstrueret)
+- Format: **[Titel](url)** (Type: Afgørelse/Nyhed) + sammenfatning + metadata
+- Afgørelser har automatisk highlight i URL
+- Nyheder har simpel URL uden highlight`;
 }
 
 function generateExampleQueries(
