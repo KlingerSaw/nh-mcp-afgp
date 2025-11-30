@@ -363,6 +363,8 @@ function generateSystemPrompt(
 
   const stopwordsList = 'praksis, afgørelse, afgørelser, kendelse, kendelser, dom, domme, sag, sager, om, ved, for, til, søgning, søg, find, finde, vise, vis, alle, og, eller, samt, i, af, på, med, fra';
 
+  const roleDescriptionsList = 'teknisk assistent, teknisk rådgiver, rådgiver, konsulent, specialist, ekspert, jurist, advokat, sagsbehandler';
+
   return `SYSTEM PROMPT — ${portalName} Search Tool
 
 Du skal kalde værktøjet "${operationId}" for søgninger på ${portalName} (${portalDomain}).
@@ -374,8 +376,11 @@ Du skal kalde værktøjet "${operationId}" for søgninger på ${portalName} (${p
 
 📋 QUERY OPTIMERING (Dit Ansvar)
 
-Trin 1: Fjern stopwords
-Liste: ${stopwordsList}
+Trin 1: Fjern stopwords og rollebeskrivelser
+Stopwords: ${stopwordsList}
+Rollebeskrivelser (fjern ALTID): ${roleDescriptionsList}
+
+Eksempel: "Teknisk assistent aldersvurdering kulbrinteforurening" → "aldersvurdering kulbrinteforurening"
 
 Trin 2: Rens § henvisninger
 - Fjern dubletter: "§ 72 § 72" → "§ 72"
@@ -408,6 +413,13 @@ Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
 5. Kald: {"query": "Bevisbyrde § 72", "detectedAcronym": "MBL"}
 
 Eksempel 2:
+Input: "Teknisk assistent aldersvurdering kulbrinteforurening"
+1. Fjern: Teknisk assistent (rollebeskrivelse) → "aldersvurdering kulbrinteforurening"
+2. Ingen §
+3. Intet akronym fundet
+4. Kald: {"query": "aldersvurdering kulbrinteforurening", "detectedAcronym": null}
+
+Eksempel 3:
 Input: "praksis om NBL § 3 strandbeskyttelse"
 1. Fjern: praksis, om → "NBL § 3 strandbeskyttelse"
 2. § allerede ren
@@ -415,7 +427,7 @@ Input: "praksis om NBL § 3 strandbeskyttelse"
 4. Fjern NBL: "§ 3 strandbeskyttelse"
 5. Kald: {"query": "§ 3 strandbeskyttelse", "detectedAcronym": "NBL"}
 
-Eksempel 3:
+Eksempel 4:
 Input: "støj fra vindmøller"
 1. Fjern: fra → "støj vindmøller"
 2. Ingen §
@@ -424,6 +436,7 @@ Input: "støj fra vindmøller"
 
 ⚠️ VIGTIGE REGLER
 
+- Fjern ALTID rollebeskrivelser fra query (teknisk assistent, rådgiver, konsulent, etc.)
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
 - Behold § henvisninger i query
