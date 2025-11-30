@@ -71,6 +71,7 @@ LIMIT 10;
         https://soavtttwnswalynemlxr.supabase.co/functions/v1/naevneneshus-mcp/openapi.json
    ```
 3. Tjek at OpenWebUI External Tools import lykkedes
+4. Hvis edge function svarer men dashboard stadig er tomt, så tjek at RLS-politikken **tillader inserts på `connection_logs` for `anon`** eller at `SUPABASE_SERVICE_ROLE_KEY` er sat. Uden det bliver svar returneret, men logningen fejler.
 
 ### ✅ Logs viser request MEN tools_discovered = 0:
 
