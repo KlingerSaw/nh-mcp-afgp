@@ -518,15 +518,17 @@ export function SearchInterface() {
                       {pub.authority && <p>Authority: {pub.authority}</p>}
                     </div>
 
-                    <a
-                      href={`https://${portal}/${pub.type === 'news' ? 'nyhed' : 'afgoerelse'}/${pub.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                      View full document
-                      <ExternalLink className="w-4 h-4 ml-1" />
-                    </a>
+                    {pub.url && (
+                      <a
+                        href={pub.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        View full document
+                        <ExternalLink className="w-4 h-4 ml-1" />
+                      </a>
+                    )}
                   </div>
                 ))
               ) : (

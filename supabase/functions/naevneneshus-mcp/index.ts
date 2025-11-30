@@ -55,10 +55,25 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url);
-  
+
+  const supabase = createSupabaseClient();
+  const baseLogContext = {
+    endpoint: url.pathname,
+    method: req.method,
+    headers: req.headers,
+  };
+
   // Serve OpenAPI spec at /openapi.json
   if (url.pathname.endsWith('/openapi.json')) {
-    return new Response(JSON.stringify(getOpenAPISpec(), null, 2), {
+    const spec = getOpenAPISpec();
+
+    await logConnection(supabase, {
+      ...baseLogContext,
+      success: true,
+      tools_discovered: countOpenApiOperations(spec),
+    });
+
+    return new Response(JSON.stringify(spec, null, 2), {
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json",
@@ -120,6 +135,17 @@ Deno.serve(async (req: Request) => {
         throw new Error(`Unknown operation: ${operation}`);
     }
 
+    await logConnection(supabase, {
+      ...baseLogContext,
+      success: true,
+      tools_discovered:
+        operation === "listPortals"
+          ? Array.isArray((result as any)?.portals)
+            ? (result as any).portals.length
+            : 0
+          : countOpenApiOperations(getOpenAPISpec()),
+    });
+
     return new Response(JSON.stringify(result, null, 2), {
       headers: {
         ...corsHeaders,
@@ -127,6 +153,12 @@ Deno.serve(async (req: Request) => {
       },
     });
   } catch (error) {
+    await logConnection(supabase, {
+      ...baseLogContext,
+      success: false,
+      error_message: error instanceof Error ? error.message : "Unknown error",
+    });
+
     console.error("Error:", error);
     return new Response(
       JSON.stringify({
@@ -453,6 +485,13 @@ async function getPublicationDetail(request: DetailRequest) {
 
   const data = await response.json();
 
+  const detectedType =
+    (data.Type || data.type || data.publicationType || data.PublicationType || "")
+      .toString()
+      .toLowerCase();
+  const type = detectedType === "news" ? "news" : "ruling";
+  const fallbackPath = type === "news" ? `nyhed/${id}` : `afgoerelse/${id}`;
+
   return {
     success: true,
     portal,
@@ -462,7 +501,11 @@ async function getPublicationDetail(request: DetailRequest) {
     publicationDate: data.PublicationDate,
     caseNumber: data.CaseNumber,
     categories: data.Categories || [],
-    url: buildPortalUrl(portal, id),
+    type,
+    url: buildPortalUrl(
+      portal,
+      data.Url || data.url || data.PublicationUrl || data.publicationUrl || fallbackPath
+    ),
   };
 }
 
@@ -641,24 +684,35 @@ function parseSearchResults(data: any, portal: string) {
   const items = data.publications || data.Items || [];
   const totalCount = data.totalCount || data.TotalCount || 0;
 
-  const results = items.map((item: any) => ({
-    id: item.id || item.Id,
-    title: item.title || item.Title,
-    abstract: cleanHtml(item.abstract || item.Abstract || ""),
-    highlights: item.highlights || [],
-    publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
-    caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
-    categories: item.categories || item.Categories || [],
-    url: buildPortalUrl(
-      portal,
-      item.url ||
-        item.Url ||
-        item.publicationUrl ||
-        item.PublicationUrl ||
-        item.id ||
-        item.Id
-    ),
-  }));
+  const results = items.map((item: any) => {
+    const id = item.id || item.Id;
+    const detectedType =
+      (item.type || item.Type || item.publicationType || item.PublicationType || "")
+        .toString()
+        .toLowerCase();
+    const type = detectedType === "news" ? "news" : "ruling";
+
+    const fallbackPath = type === "news" ? `nyhed/${id}` : `afgoerelse/${id}`;
+
+    return {
+      id,
+      type,
+      title: item.title || item.Title,
+      abstract: cleanHtml(item.abstract || item.Abstract || ""),
+      highlights: item.highlights || [],
+      publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
+      caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
+      categories: item.categories || item.Categories || [],
+      url: buildPortalUrl(
+        portal,
+        item.url ||
+          item.Url ||
+          item.publicationUrl ||
+          item.PublicationUrl ||
+          fallbackPath
+      ),
+    };
+  });
 
   return {
     results,
@@ -894,5 +948,60 @@ async function logAcronyms(supabase: any, portal: string, acronyms: Array<{ acro
     await supabase.from("metadata_suggestions").insert(suggestions);
   } catch (error) {
     console.error("Failed to log acronyms:", error);
+  }
+}
+
+async function logConnection(
+  supabase: any,
+  log: {
+    endpoint: string;
+    method: string;
+    headers: Headers;
+    success: boolean;
+    tools_discovered?: number;
+    error_message?: string;
+  }
+) {
+  try {
+    const userAgent = log.headers.get("user-agent") || log.headers.get("User-Agent") || "unknown";
+    const authHeader = log.headers.get("authorization") || log.headers.get("Authorization") || "";
+    const authType = authHeader ? authHeader.split(" ")[0] : "none";
+    const ipAddress =
+      log.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      log.headers.get("x-real-ip") ||
+      "unknown";
+
+    const requestHeaders = {
+      "x-client-info": log.headers.get("x-client-info") || null,
+      "content-type": log.headers.get("content-type") || null,
+      "user-agent": userAgent,
+    };
+
+    await supabase.from("connection_logs").insert({
+      endpoint: log.endpoint,
+      method: log.method,
+      user_agent: userAgent,
+      auth_type: authType,
+      ip_address: ipAddress,
+      request_headers: requestHeaders,
+      tools_discovered: log.tools_discovered ?? 0,
+      success: log.success,
+      error_message: log.error_message || null,
+    });
+  } catch (error) {
+    console.error("Failed to log connection:", error);
+  }
+}
+
+function countOpenApiOperations(spec: any): number {
+  try {
+    const paths = spec?.paths || {};
+    return Object.values(paths).reduce((total, pathItem: any) => {
+      if (!pathItem || typeof pathItem !== "object") return total;
+      return total + Object.keys(pathItem).length;
+    }, 0);
+  } catch (error) {
+    console.error("Failed to count OpenAPI operations:", error);
+    return 0;
   }
 }
