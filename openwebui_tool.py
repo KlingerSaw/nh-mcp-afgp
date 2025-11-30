@@ -46,6 +46,7 @@ class Tools:
         page: int = 1,
         page_size: int = 5,
         category: Optional[str] = None,
+        detected_acronym: Optional[str] = None,
     ) -> str:
         """
         Search for publications on a naevneneshus.dk portal.
@@ -57,6 +58,7 @@ class Tools:
             page: Page number (default: 1)
             page_size: Results per page (default: 5, max: 50)
             category: Filter by category (optional, e.g., "Miljøbeskyttelsesloven")
+            detected_acronym: Detected law acronym (optional, e.g., "MBL", "NBL")
 
         Returns:
             Formatted search results with titles, dates, and links
@@ -64,6 +66,9 @@ class Tools:
         Examples:
             # Basic search
             run(query="jordforurening")
+
+            # Search with detected acronym
+            run(query="støj", detected_acronym="MBL")
 
             # Search with category
             run(query="støj", category="Miljøbeskyttelsesloven")
@@ -76,6 +81,7 @@ class Tools:
         print(f"[OpenWebUI Tool] Received parameters:")
         print(f"  query: {query}")
         print(f"  category: {category}")
+        print(f"  detected_acronym: {detected_acronym}")
         print(f"  portal: {portal}")
 
         # Build request payload for MCP endpoint
@@ -88,6 +94,11 @@ class Tools:
             "pageSize": min(page_size, 50),  # Cap at 50
             "originalRequest": query,
         }
+
+        # Add detected acronym if provided
+        if detected_acronym:
+            print(f"[OpenWebUI Tool] Adding detectedAcronym to payload: {detected_acronym}")
+            payload["detectedAcronym"] = detected_acronym
 
         # Add category filter if provided
         if category:

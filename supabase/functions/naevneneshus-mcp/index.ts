@@ -299,7 +299,7 @@ async function searchPortal(request: SearchRequest) {
   const pagination = (request as any).pagination || {};
   const portal = request.portal || 'mfkn.naevneneshus.dk';
   const query = request.query;
-  const aiDetectedAcronym = request.detectedAcronym;
+  let aiDetectedAcronym = request.detectedAcronym;
   const originalQuery =
     request.originalRequest ||
     request.originalQuery ||
@@ -316,6 +316,12 @@ async function searchPortal(request: SearchRequest) {
       full_term: '',
       source: 'ai'
     }];
+  }
+
+  // FALLBACK: If detectedAcronym is not provided but detected_acronyms array exists, use first acronym
+  if (!aiDetectedAcronym && detectedAcronyms && detectedAcronyms.length > 0) {
+    aiDetectedAcronym = detectedAcronyms[0].acronym;
+    console.log(`Using acronym from detected_acronyms array: ${aiDetectedAcronym}`);
   }
 
   if (!query) {
@@ -356,11 +362,17 @@ async function searchPortal(request: SearchRequest) {
     let aiMissedAcronym = false;
 
     if (!detectedCategory && aiDetectedAcronym) {
+      console.log(`Attempting to match acronym: ${aiDetectedAcronym}`);
+      console.log(`Available categories: ${categories.length}`);
+
       categoryInfo = await matchAcronymToCategory(categories, aiDetectedAcronym);
 
       if (!categoryInfo) {
+        console.warn(`Failed to match acronym "${aiDetectedAcronym}" to any category`);
+        console.log(`Available category aliases:`, categories.map(c => ({ title: c.category_title, aliases: c.aliases })));
         await logUnknownAcronym(supabase, portal, aiDetectedAcronym, finalQueryForSearch);
       } else {
+        console.log(`Successfully matched "${aiDetectedAcronym}" to category: ${categoryInfo.title}`);
         detectedCategory = {
           id: categoryInfo.id,
           title: categoryInfo.title,
