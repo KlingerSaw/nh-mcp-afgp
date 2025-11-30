@@ -377,27 +377,53 @@ ${acronyms.slice(0, 10).map(a => `- ${a.acronym} → ${a.full_term}`).join('\n')
 SYNONYMER:
 ${synonyms.slice(0, 10).map(s => `- ${s.term} → ${s.synonyms.join(', ')}`).join('\n') || '- Ingen synonymer'}
 
-OPGAVE - QUERY OPTIMERING:
-1. Analyser brugerens spørgsmål (originalQuery)
-2. Identificer kernesøgeord
-3. Ekspander akronymer baseret på listen ovenfor
-4. Tilføj relevante synonymer baseret på listen ovenfor
-5. Fjern filler words: og, eller, i, på, for, af, at, der, det, den, de, en, et, som, med, til, ved, om
-6. Ret stavefejl hvis muligt
-7. Konverter til effektiv søgestreng
+VIGTIG OPGAVE - QUERY OPTIMERING:
 
-EKSEMPLER:
-Bruger: "hvad siger reglerne om jordforurening?"
-→ query: "jordforurening regler"
+Du SKAL altid optimere søgestrengen! Din opgave er at lave en kort, effektiv søgestreng.
 
-Bruger: "MBL § 72 om støj"
-→ query: "Miljøbeskyttelsesloven § 72 støj"
+TRIN-FOR-TRIN PROCES:
+1. Find KERNEORDENE i brugerens spørgsmål
+2. Ekspander ALLE akronymer (brug listen ovenfor)
+3. FJERN filler words: og, eller, i, på, for, af, at, der, det, den, de, en, et, som, med, til, ved, om, søgning, søg, søge, praksis, regler, siger, hvad, hvordan
+4. Tilføj relevante synonymer hvis det giver mening
+5. Ret stavefejl
 
-Bruger: "praksis om byggetilladelse i landzone"
-→ query: "byggetilladelse landzone"
+KRITISK: query SKAL være ANDERLEDES og KORTERE end originalQuery!
+
+EKSEMPLER PÅ KORREKT OPTIMERING:
+
+Input: "hvad siger reglerne om jordforurening?"
+Output query: "jordforurening"
+Forklaring: Fjernet "hvad siger reglerne om"
+
+Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
+Output query: "Bevisbyrde Miljøbeskyttelsesloven § 72"
+Forklaring: Ekspanderet MBL, fjernet "og søgning om" og "praksis"
+
+Input: "MBL § 72 om støj"
+Output query: "Miljøbeskyttelsesloven § 72 støj støjgener"
+Forklaring: Ekspanderet MBL, tilføjet synonym "støjgener"
+
+Input: "praksis om byggetilladelse i landzone"
+Output query: "byggetilladelse landzone"
+Forklaring: Fjernet "praksis om" og "i"
+
+Input: "kan jeg få hjælp til at finde afgørelser om hundehold"
+Output query: "hundehold afgørelser"
+Forklaring: Fjernet hele spørgsmålsdelen, beholdt kerneord
+
+Input: "hvad er den seneste praksis vedrørende parkeringsforhold"
+Output query: "parkeringsforhold"
+Forklaring: Fjernet alt filler, fokus på kerneordet
 
 FUNKTIONSKALD:
-Send ALTID både originalQuery (brugerens præcise input) og query (din optimerede version).
+Send ALTID både originalQuery (brugerens præcise input) og query (din optimerede, kortere version).
+
+KVALITETSKONTROL:
+- Hvis query === originalQuery, så har du IKKE optimeret korrekt!
+- Query skal typisk være 30-70% kortere end originalQuery
+- Behold paragrafnumre (§ 72) og juridiske termer
+- Ekspander ALLE akronymer
 
 EFTER RESULTAT:
 Generer 50-100 ords dansk resume baseret på:
