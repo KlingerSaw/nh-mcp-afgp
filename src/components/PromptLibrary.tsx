@@ -303,7 +303,7 @@ export function PromptLibrary() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-white rounded-xl shadow-md p-6">
           <h4 className="font-semibold text-gray-900 mb-2">Kategorier</h4>
           <p className="text-sm text-gray-600 mb-3">
@@ -320,20 +320,6 @@ export function PromptLibrary() {
                 + {categories.length - 10} flere...
               </p>
             )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <h4 className="font-semibold text-gray-900 mb-2">Lovområder</h4>
-          <p className="text-sm text-gray-600 mb-3">
-            {legalAreas.length} lovområder
-          </p>
-          <div className="max-h-48 overflow-y-auto">
-            {legalAreas.map((area, idx) => (
-              <div key={idx} className="text-sm text-gray-700 py-1">
-                • {area.area_name}
-              </div>
-            ))}
           </div>
         </div>
 
