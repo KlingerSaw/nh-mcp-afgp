@@ -222,6 +222,7 @@ function getOpenAPISpec() {
                             "id": {"type": "string"},
                             "title": {"type": "string"},
                             "abstract": {"type": "string"},
+                            "highlights": {"type": "array", "items": {"type": "string"}},
                             "publicationDate": {"type": "string"},
                             "caseNumber": {"type": "string"},
                             "categories": {"type": "array", "items": {"type": "string"}},
@@ -256,7 +257,16 @@ function getOpenAPISpec() {
 
 async function searchPortal(request: SearchRequest) {
   const startTime = Date.now();
-  const { portal = 'mfkn.naevneneshus.dk', query, originalQuery, page = 1, pageSize = 10, filters, detectedAcronyms } = request;
+
+  // Handle both direct params and nested pagination object (Open WebUI format)
+  const pagination = (request as any).pagination || {};
+  const portal = request.portal || 'mfkn.naevneneshus.dk';
+  const query = request.query;
+  const originalQuery = request.originalQuery;
+  const page = pagination.page || request.page || 1;
+  const pageSize = pagination.pageSize || request.pageSize || 10;
+  const filters = request.filters;
+  const detectedAcronyms = request.detectedAcronyms;
 
   if (!query) {
     throw new Error('Missing required parameter: query');
@@ -461,7 +471,9 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
     parameters: [],
   };
 
-  if (filters?.category) {
+  // Only include category if it's a valid UUID (not strings like "ruling")
+  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (filters?.category && isValidUUID.test(filters.category)) {
     payload.categories = [{
       id: filters.category,
       title: filters.categoryTitle || ''
@@ -481,6 +493,7 @@ function parseSearchResults(data: any, portal: string) {
     id: item.id || item.Id,
     title: item.title || item.Title,
     abstract: cleanHtml(item.abstract || item.Abstract || ""),
+    highlights: item.highlights || [],
     publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
     caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
     categories: item.categories || item.Categories || [],
