@@ -447,10 +447,7 @@ Input: "støj fra vindmøller"
 - Sæt "page" hvis brugeren beder om næste side
 
 Kategorier fra portalen (reference):
-${categoryList || '  • (ingen kategorier registreret)'}
-
-Lovområder (kontekst):
-${legalAreaList || '  (ingen lovområder registreret)'}`;
+${categoryList || '  • (ingen kategorier registreret)'}`;
 }
 
 function generateQuickGuide(portalName: string, operationId: string, portal: string): string {
