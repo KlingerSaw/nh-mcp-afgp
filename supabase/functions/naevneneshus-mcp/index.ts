@@ -314,6 +314,15 @@ async function searchPortal(request: SearchRequest) {
       categoryTitle: chosenCategory?.title || filtersWithDefaults.categoryTitle,
     };
 
+    const requestLogMetadata: Record<string, unknown> = {
+      portal,
+      query,
+      original_query: originalQuery || query,
+      filters: mergedFilters,
+      pagination: { page, pageSize },
+      detected_acronyms: detectedAcronyms,
+    };
+
     // Optimize the query further (removes stopwords and category acronyms)
     const optimizedQuery = await optimizeQuery(categories, query);
 
@@ -341,36 +350,14 @@ async function searchPortal(request: SearchRequest) {
     const results = parseSearchResults(data, portal);
     const executionTime = Date.now() - startTime;
 
-    // Log the query with optimization tracking and payload/response
-    await logQuery(supabase, {
-      portal,
-      query,
-      filters: mergedFilters,
-      original_query: originalQuery || query,
-      optimized_query: optimizedQuery !== query ? optimizedQuery : null,
-      result_count: results.totalCount,
-      execution_time_ms: executionTime,
-      search_payload: searchPayload,
-      api_response: {
-        totalCount: data.totalCount || data.TotalCount,
-        itemCount: (data.publications || data.Items || []).length,
-        firstItemTitle: data.publications?.[0]?.title || data.Items?.[0]?.Title || null,
-        detectedCategory: detectedCategoryInfo?.id || null,
-      },
-    });
-
     // Auto-detect acronyms if not provided
     let acronymsToLog = detectedAcronyms;
     if (!acronymsToLog || acronymsToLog.length === 0) {
       acronymsToLog = detectAcronyms(originalQuery || query);
+      requestLogMetadata.detected_acronyms = acronymsToLog;
     }
 
-    // Log detected acronyms
-    if (acronymsToLog && acronymsToLog.length > 0) {
-      await logAcronyms(supabase, portal, acronymsToLog);
-    }
-
-    return {
+    const responsePayload = {
       success: true,
       portal,
       query: optimizedQuery,
@@ -381,6 +368,28 @@ async function searchPortal(request: SearchRequest) {
       pageSize,
       executionTime,
     };
+
+    // Log the query with optimization tracking and payload/response
+    await logQuery(supabase, {
+      portal,
+      query,
+      filters: mergedFilters,
+      original_query: originalQuery || query,
+      optimized_query: optimizedQuery !== query ? optimizedQuery : null,
+      result_count: results.totalCount,
+      execution_time_ms: executionTime,
+      search_payload: searchPayload,
+      api_response: data,
+      raw_request: requestLogMetadata,
+      tool_response: responsePayload,
+    });
+
+    // Log detected acronyms
+    if (acronymsToLog && acronymsToLog.length > 0) {
+      await logAcronyms(supabase, portal, acronymsToLog);
+    }
+
+    return responsePayload;
   } catch (error) {
     const executionTime = Date.now() - startTime;
     await logQuery(supabase, {
@@ -390,6 +399,14 @@ async function searchPortal(request: SearchRequest) {
       result_count: 0,
       execution_time_ms: executionTime,
       error_message: error instanceof Error ? error.message : "Unknown error",
+      raw_request: {
+        portal,
+        query,
+        original_query: originalQuery || query,
+        filters,
+        pagination: { page, pageSize },
+        detected_acronyms: detectedAcronyms,
+      },
     });
     throw error;
   }
@@ -842,6 +859,8 @@ async function logQuery(supabase: any, data: any) {
     if (data.error_message) logData.error_message = data.error_message;
     if (data.search_payload) logData.search_payload = data.search_payload;
     if (data.api_response) logData.api_response = data.api_response;
+    if (data.raw_request) logData.raw_request = data.raw_request;
+    if (data.tool_response) logData.tool_response = data.tool_response;
     if (data.user_identifier) logData.user_identifier = data.user_identifier;
 
     await supabase.from("query_logs").insert(logData);
