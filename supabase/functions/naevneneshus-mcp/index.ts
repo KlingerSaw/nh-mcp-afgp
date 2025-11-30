@@ -596,25 +596,51 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       optimized = optimized.replace(regex, '');
     }
 
+    // Remove duplicate paragraph references before splitting into words
+    const seenParagraphs = new Set<string>();
+    const paragraphPattern = /§\s*\d+(?:-[^\s]+)?/g;
+
+    optimized = optimized.replace(paragraphPattern, (match) => {
+      const baseNum = match.match(/§\s*\d+/)?.[0].replace(/\s+/g, ' ');
+      if (!baseNum) return match;
+
+      if (seenParagraphs.has(baseNum)) {
+        return ''; // Remove duplicate
+      }
+
+      seenParagraphs.add(baseNum);
+
+      // Check if this paragraph reference has a compound with stopword (e.g., § 72-praksis)
+      const parts = match.split('-');
+      if (parts.length > 1) {
+        const suffix = parts[1].replace(/[.,!?;:]$/, '').toLowerCase();
+        if (stopwords.includes(suffix)) {
+          return baseNum; // Keep only the base paragraph number, remove the stopword compound
+        }
+      }
+
+      return match;
+    });
+
     let words = optimized.split(/\s+/).filter(w => w.length > 0);
 
+    // Filter remaining words: remove stopwords and compound words with stopwords
     words = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:\-]$/, '').toLowerCase();
       const baseWord = cleanWord.split('-')[0];
-      return !stopwords.includes(cleanWord) && !stopwords.includes(baseWord);
-    });
 
-    const seenParagraphs = new Set<string>();
-    words = words.filter((word) => {
-      if (word.includes('§')) {
-        const baseNum = word.match(/§\s*\d+/)?.[0];
-        if (baseNum) {
-          if (seenParagraphs.has(baseNum)) {
-            return false;
-          }
-          seenParagraphs.add(baseNum);
-        }
+      // Check if any part of a compound word (separated by hyphen) is a stopword
+      const parts = word.split('-');
+      const hasStopwordPart = parts.some(part => {
+        const cleanPart = part.replace(/[.,!?;:]$/, '').toLowerCase();
+        return stopwords.includes(cleanPart);
+      });
+
+      // If the word contains a stopword part, skip it entirely
+      if (stopwords.includes(cleanWord) || stopwords.includes(baseWord) || hasStopwordPart) {
+        return false;
       }
+
       return true;
     });
 
