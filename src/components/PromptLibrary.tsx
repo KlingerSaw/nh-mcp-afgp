@@ -360,109 +360,57 @@ function generateSystemPrompt(
   legalAreas: LegalArea[],
   _acronyms: Acronym[]
 ): string {
-  const legalAreaList = legalAreas.map(l => `  - ${l.area_name}`).join('\n');
   const categoryList = categories.map(c => `  • ${c.category_title}`).join('\n');
-  const fallbackCategory = categories[0]?.category_title || 'Standardkategori';
-  const today = new Date().toISOString().slice(0, 10);
+  const legalAreaList = legalAreas.map(l => `  - ${l.area_name}`).join('\n');
 
-  return `SYSTEM PROMPT — ${portalName} Search Translator
+  return `SYSTEM PROMPT — ${portalName} Search Tool Caller
 
-Du fungerer som et mellemled mellem brugerens naturlige sprog og ${portalName}s søge-API (${portalDomain}/api/Search).
+Du skal altid kalde værktøjet "search_${portalDomain.replace(/[^a-z0-9]/gi, '_')}" for at søge på ${portalName} (${portalDomain}).
 
-Din eneste opgave er at oversætte brugerens besked til en valid JSON-request-body i nedenstående format og sende både optimeret søgning og den oprindelige forespørgsel.
+Regler
+- Brug brugerens besked som søgetekst og kald værktøjet med argumentet "query".
+- Sæt argumentet "portal" til "${portalDomain}" (ikke noget andet domæne).
+- Brug "page_size" 5, medmindre brugeren beder om andet; sæt "page" hvis brugeren beder om næste side.
+- Returnér KUN værktøjets svartekst (ingen JSON, ingen kodeblokke, ingen ekstra forklaringer).
+- Rens HTML-encoding i værktøjs-output (fx &oslash; → ø, &aelig; → æ).
+- Bevar AI-resuméet og den formaterede liste som værktøjet returnerer (titel, journalnr, kategorier, dato, link osv.).
 
----
-🧩 STRUKTUR FOR OUTPUT
-Du skal ALTID returnere et gyldigt JSON-objekt med denne struktur (uden ekstra felter eller tekst):
-
-{
-"query": "<kort og præcis gengivelse af brugerens søgning>",
-"originalRequest": "<brugerens uændrede input>",
-"filters": {
-"category": "<kategori fra lovområder>",
-"dateRange": {
-"start": "<ISO-dato>",
-"end": "<ISO-dato>"
-}
-},
-"pagination": {
-"page": 1,
-"pageSize": 10
-}
-}
-
----
-📘 REGLER
-
-query
-- Indeholder brugerens søgetekst (hvad de faktisk vil finde).
-- Gør den kort og præcis, men bevar centrale ord og akronymer.
-
-originalRequest
-- Kopi af brugerens input uden ændringer.
-
-filters.category
-- Brug portalens kategorier fra /api/SiteSettings (se listen herunder) og vælg den mest sandsynlige:
-${categoryList || '  • (ingen kategorier registreret – vælg mest nærliggende)'}
-- Hvis intet kan udledes → brug "${fallbackCategory}" som standard.
+Kategorier fra portalen (til eventuelle brugerønsker):
+${categoryList || '  • (ingen kategorier registreret – brug portalens standard hvis relevant)'}
 
 Lovområder (kontekst):
 ${legalAreaList || '  (ingen lovområder registreret)'}
 
-filters.dateRange
-- Skal altid dække de seneste 3 år med startdato "2022-01-01" og slutdato dags dato (fx "${today}").
+Svarformat (eksempel fra værktøjet):
+Søgning: “Bevisbyrde ved MBL § 72 og søgning om § 72-praksis”
+Kilde: ${portalName} (https://${portalDomain})
 
-pagination
-- Skal ALTID være: "page": 1, "pageSize": 10.
+Antal afgørelser/nyheder i alt: 7
+Antal vist i denne søgning: 5
 
-- Du må aldrig inkludere felter som body, attachments, documents eller links.
-- Returnér kun JSON, uden nogen forklaring, tekst eller kodeblok-markering.
-
----
-🧠 EKSEMPEL
-
-Bruger skriver:
-> Find praksis om bevisbyrde ved MBL § 72
-Du returnerer:
-
-{
-"query": "Bevisbyrde § 72",
-"originalRequest": "Find praksis om bevisbyrde ved MBL § 72",
-"filters": {
-"category": "Miljøbeskyttelsesloven",
-"dateRange": {
-"start": "2022-01-01",
-"end": "${today}"
-}
-},
-"pagination": {
-"page": 1,
-"pageSize": 10
-}
-}`;
+Resultater:
+───────────────────────────────
+• Titel: Ophævelse i sag om påbud om måling af støj fra skydebane
+• Journalnr: 22/00421
+• Kategori(er): Miljøbeskyttelsesloven
+• Dato: 2024-02-29
+• Publiceret: 2024-02-29T12:32:22+00:00
+• Myndighed: Miljø og Fødevareklagenævnet
+• AI-resumé (50–100 ord): ...
+• Link: https://${portalDomain}/afgoerelse/...`;
 }
 
 function generateQuickGuide(portalName: string, _operationId: string, portal: string): string {
   return `QUICK GUIDE – ${portalName}
 
-Rolle: Oversæt brugerens besked til JSON-body til ${portal}/api/Search.
+Rolle: Kald værktøjet "search_${portal.replace(/[^a-z0-9]/gi, '_')}" med brugerens søgetekst og returnér værktøjets formaterede svar.
 
-Obligatorisk output:
-{
-  "query": "kort gengivelse",
-  "originalRequest": "brugerens uændrede tekst",
-  "filters": {
-    "category": "<kategori fra portalens SiteSettings>",
-    "dateRange": {"start": "2022-01-01", "end": "<dags dato>"}
-  },
-  "pagination": {"page": 1, "pageSize": 10}
-}
-
-Husk:
-- Bevar akronymer (MBL, NBL, VL osv.).
-- Category SKAL være en af portalens kategorier fra /api/SiteSettings; vælg den mest sandsynlige eller brug portalens standard.
-- Startdato altid 2022-01-01, slutdato dags dato.
-- Ingen ekstra felter eller tekst.`;
+Sådan gør du:
+- Brug brugerens tekst som "query"-argument.
+- Sæt "portal"="${portal}" og "page_size"=5 (medmindre brugeren beder om andet).
+- Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
+- Fjern HTML-encoding i svaret (ø, æ, å osv.).
+- Returnér KUN tekstblokken fra værktøjet (ingen JSON eller kodeblokke).`;
 }
 
 function generateExampleQueries(
