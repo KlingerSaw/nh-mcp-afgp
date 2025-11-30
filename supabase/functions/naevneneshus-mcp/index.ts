@@ -371,7 +371,8 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
 
     if (!categories || categories.length === 0) return null;
 
-    // Normalize query for matching (uppercase for acronyms)
+    // Normalize query for matching
+    const queryLower = query.toLowerCase();
     const queryUpper = query.toUpperCase();
     const queryWords = query.split(/\s+/);
 
@@ -379,14 +380,21 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
     for (const category of categories) {
       const aliases = category.aliases || [];
 
-      // Check if any alias matches words in the query
+      // Check if any alias matches in the query
       for (const alias of aliases) {
+        const aliasLower = alias.toLowerCase();
         const aliasUpper = alias.toUpperCase();
 
-        // Match whole words or acronyms
-        if (queryWords.some(word => word.toUpperCase() === aliasUpper) ||
-            queryUpper.includes(aliasUpper)) {
-          console.log(`Detected category: ${category.category_title} (${alias}) -> ${category.category_id}`);
+        // Match acronyms (uppercase words like "MBL", "NBL")
+        const isAcronymMatch = queryWords.some(word =>
+          word.toUpperCase() === aliasUpper && /^[A-ZÆØÅ]+$/.test(alias)
+        );
+
+        // Match full names (case-insensitive substring match)
+        const isFullNameMatch = queryLower.includes(aliasLower) && alias.length > 3;
+
+        if (isAcronymMatch || isFullNameMatch) {
+          console.log(`Detected category: ${category.category_title} (matched: "${alias}") -> ${category.category_id}`);
           return category.category_id;
         }
       }
@@ -408,27 +416,38 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       'søgning', 'find', 'vise', 'vis', 'alle'
     ];
 
-    // Get all portal_acronyms for this portal to identify category acronyms
-    const { data: acronyms } = await supabase
-      .from('portal_acronyms')
-      .select('acronym, full_term')
+    // Get all category aliases to remove them from query (they're now in filters.category)
+    const { data: categories } = await supabase
+      .from('site_categories')
+      .select('aliases')
       .eq('portal', portal);
 
-    const knownAcronyms = new Set((acronyms || []).map((a: any) => a.acronym.toUpperCase()));
+    // Build set of all category-related terms to remove
+    const categoryTerms = new Set<string>();
+    if (categories) {
+      categories.forEach((cat: any) => {
+        (cat.aliases || []).forEach((alias: string) => {
+          categoryTerms.add(alias.toLowerCase());
+          categoryTerms.add(alias.toUpperCase());
+        });
+      });
+    }
 
-    // Split query into words
-    let words = query.split(/\s+/);
+    // Remove category terms from query (substring removal for multi-word terms)
+    let optimized = query;
+    for (const term of categoryTerms) {
+      const regex = new RegExp(`\\b${term}\\b`, 'gi');
+      optimized = optimized.replace(regex, '');
+    }
 
-    // Remove stopwords and category acronyms
+    // Split into words and remove stopwords
+    let words = optimized.split(/\s+/).filter(w => w.length > 0);
     words = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:]$/, '').toLowerCase();
-      const upperWord = word.replace(/[.,!?;:]$/, '').toUpperCase();
-
-      // Keep if it's not a stopword and not a known category acronym
-      return !stopwords.includes(cleanWord) && !knownAcronyms.has(upperWord);
+      return !stopwords.includes(cleanWord);
     });
 
-    const optimized = words.join(' ').trim();
+    optimized = words.join(' ').trim();
 
     // Return optimized query or original if optimization made it empty
     return optimized.length > 0 ? optimized : query;
