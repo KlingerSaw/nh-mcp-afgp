@@ -447,12 +447,44 @@ ${acronymTable || '  (ingen akronymer registreret)'}
 Trin 4: Fjern akronym fra query
 "Bevisbyrde MBL § 72" → "Bevisbyrde § 72"
 
+Trin 5: Detektér kategori-filter (valgfrit)
+Hvis brugeren eksplicit angiver kategori med syntaks "kategori:" eller "lovområde:":
+1. Find teksten efter "kategori:" eller "lovområde:"
+2. Match mod tilgængelige kategorier (både fulde navne og akronymer)
+3. Fjern hele "kategori: [navn]" fra query
+4. Tilføj til filters.category i værktøjskaldet
+
+Eksempler på kategori-detektion:
+- "PFAS-forurening, kategori: jordforureningsloven"
+  → query: "PFAS-forurening"
+  → filters.category: "Jordforureningsloven"
+
+- "støj vindmøller, lovområde: MBL"
+  → query: "støj vindmøller"
+  → filters.category: "Miljøbeskyttelsesloven" (akronym matchet)
+
+Matching regler:
+- Case-insensitive: "jordforureningsloven" = "Jordforureningsloven"
+- Match både fulde navne OG akronymer: "JFL" = "Jordforureningsloven"
+- Se kategori-liste nederst for gyldige værdier
+
 📞 VÆRKTØJSKALD
 
+Uden kategori:
 {
   "query": "Bevisbyrde § 72",
   "detectedAcronym": "MBL",
   "portal": "${portalDomain}"
+}
+
+Med kategori:
+{
+  "query": "PFAS-forurening",
+  "detectedAcronym": null,
+  "portal": "${portalDomain}",
+  "filters": {
+    "category": "Jordforureningsloven"
+  }
 }
 
 ✅ KOMPLETTE EKSEMPLER
@@ -499,7 +531,28 @@ Input: "støj fra vindmøller"
 1. Fjern: fra → "støj vindmøller"
 2. Ingen §
 3. Intet akronym fundet
-4. Kald: {"query": "støj vindmøller", "detectedAcronym": null}
+4. Ingen kategori
+5. Kald: {"query": "støj vindmøller", "detectedAcronym": null}
+
+Eksempel 6:
+Input: "PFAS-forurening, kategori: jordforureningsloven"
+0. Ingen rollebeskrivelse detekteret
+1. Ingen stopwords at fjerne
+2. Ingen §
+3. Identificér: PFAS → Intet match i akronym-tabel
+4. Detektér kategori: "kategori: jordforureningsloven" → Match "Jordforureningsloven"
+5. Fjern kategori-tekst: "PFAS-forurening"
+6. Kald: {"query": "PFAS-forurening", "detectedAcronym": null, "filters": {"category": "Jordforureningsloven"}}
+
+Eksempel 7:
+Input: "bevisbyrde ved olieforurening, lovområde: JFL"
+0. Ingen rollebeskrivelse detekteret
+1. Fjern: ved → "bevisbyrde olieforurening lovområde JFL"
+2. Ingen §
+3. Intet akronym i query (JFL er kategori, ikke del af query)
+4. Detektér kategori: "lovområde: JFL" → Match akronym "JFL" til "Jordforureningsloven"
+5. Fjern kategori-tekst: "bevisbyrde olieforurening"
+6. Kald: {"query": "bevisbyrde olieforurening", "detectedAcronym": null, "filters": {"category": "Jordforureningsloven"}}
 
 ⚠️ VIGTIGE REGLER
 
@@ -507,6 +560,8 @@ Input: "støj fra vindmøller"
 - Brug din sprogforståelse: Er det en profession/rolle eller en del af søgeemnet?
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
+- Hvis kategori specificeres med "kategori:" eller "lovområde:", match og tilføj til filters.category
+- Fjern kategori-syntaks fra query (behold kun søgeemnet)
 - Behold § henvisninger i query
 - Brug "page_size" 5, medmindre andet ønskes
 - Sæt "page" hvis brugeren beder om næste side
@@ -584,6 +639,11 @@ Sådan gør du:
 - Sæt "portal"="${portal}" og "page_size"=5 (medmindre brugeren beder om andet).
 - Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
 - Ved opfølgningsspørgsmål: kombiner tidligere + ny query
+- Hvis bruger skriver "kategori: [navn]" eller "lovområde: [navn]", tilføj filters.category
+
+Kategori-parsing:
+- "PFAS, kategori: jordforureningsloven" → query="PFAS", filters.category="Jordforureningsloven"
+- "støj, lovområde: MBL" → query="støj", filters.category="Miljøbeskyttelsesloven"
 
 📊 Præsentation af Resultater:
 - START med: "Viser resultat X-Y af Z resultater:"
