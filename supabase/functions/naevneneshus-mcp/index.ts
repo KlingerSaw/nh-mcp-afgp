@@ -285,10 +285,7 @@ async function searchPortal(request: SearchRequest) {
     throw new Error('Missing required parameter: query');
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-  );
+  const supabase = createSupabaseClient();
 
   try {
     const today = new Date().toISOString().slice(0, 10);
@@ -348,6 +345,7 @@ async function searchPortal(request: SearchRequest) {
     await logQuery(supabase, {
       portal,
       query,
+      filters: mergedFilters,
       original_query: originalQuery || query,
       optimized_query: optimizedQuery !== query ? optimizedQuery : null,
       result_count: results.totalCount,
@@ -464,15 +462,12 @@ async function getPublicationDetail(request: DetailRequest) {
     publicationDate: data.PublicationDate,
     caseNumber: data.CaseNumber,
     categories: data.Categories || [],
-    url: `https://${portal}/${id}`,
+    url: buildPortalUrl(portal, id),
   };
 }
 
 async function listPortals() {
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-  );
+  const supabase = createSupabaseClient();
 
   const { data: portals, error } = await supabase
     .from('portal_metadata')
@@ -657,7 +652,15 @@ function parseSearchResults(data: any, portal: string) {
     publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
     caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
     categories: item.categories || item.Categories || [],
-    url: `https://${portal}/${item.id || item.Id}`,
+    url: buildPortalUrl(
+      portal,
+      item.url ||
+        item.Url ||
+        item.publicationUrl ||
+        item.PublicationUrl ||
+        item.id ||
+        item.Id
+    ),
   }));
 
   return {
@@ -832,6 +835,7 @@ async function logQuery(supabase: any, data: any) {
     const logData: any = {
       portal: data.portal,
       query: data.query,
+      filters: data.filters ?? {},
       result_count: data.result_count,
       execution_time_ms: data.execution_time_ms,
     };
@@ -841,11 +845,32 @@ async function logQuery(supabase: any, data: any) {
     if (data.error_message) logData.error_message = data.error_message;
     if (data.search_payload) logData.search_payload = data.search_payload;
     if (data.api_response) logData.api_response = data.api_response;
+    if (data.user_identifier) logData.user_identifier = data.user_identifier;
 
     await supabase.from("query_logs").insert(logData);
   } catch (error) {
     console.error("Failed to log query:", error);
   }
+}
+
+function createSupabaseClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ||
+      Deno.env.get("SUPABASE_ANON_KEY") ||
+      ""
+  );
+}
+
+function buildPortalUrl(portal: string, path?: string) {
+  if (!path) return `https://${portal}`;
+
+  if (path.startsWith("http")) {
+    return path;
+  }
+
+  const trimmedPath = path.replace(/^\//, "");
+  return `https://${portal}/${trimmedPath}`;
 }
 
 function detectAcronyms(text: string): Array<{ acronym: string; context: string }> {
