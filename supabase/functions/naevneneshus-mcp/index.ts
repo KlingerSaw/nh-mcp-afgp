@@ -84,10 +84,12 @@ Deno.serve(async (req: Request) => {
       }
       
       const parsed = JSON.parse(bodyText);
-      operation = parsed.operation;
+
+      // If operation is specified, use it; otherwise default to searchPortal for Open WebUI compatibility
+      operation = parsed.operation || 'searchPortal';
       params = parsed;
       delete params.operation;
-      
+
       console.log('POST request - Operation:', operation, 'Params:', params);
     }
 
@@ -137,8 +139,8 @@ function getOpenAPISpec() {
   return {
     "openapi": "3.1.0",
     "info": {
-      "title": "Nævneneshus MCP Search API",
-      "description": "API til søgning i Danmarks administrative klage- og ankesystem. Søg i afgørelser fra Miljø- og Fødevareklagenævnet (MFKN) og andre nævn. Understøtter intelligent query optimering, kategoridetektion og akronymhåndtering.",
+      "title": "Afgp",
+      "description": "Søg i afgørelser fra Miljø- og Fødevareklagenævnet (MFKN). API'et håndterer automatisk kategoridetektion og query optimering.",
       "version": "1.0.0"
     },
     "servers": [
@@ -150,40 +152,26 @@ function getOpenAPISpec() {
     "paths": {
       "/": {
         "post": {
-          "operationId": "searchPortal",
-          "summary": "Søg i afgørelser fra nævn",
-          "description": "Søg i afgørelser med intelligent query optimering. API'et detekterer automatisk kategorier fra akronymer (f.eks. MBL, NBL) og optimerer søgetermer ved at fjerne stopwords og redundans.",
+          "operationId": "Afgp",
+          "summary": "Søg i afgørelser",
+          "description": "Søg i afgørelser med automatisk kategoridetektion fra akronymer (MBL, NBL, etc.) og query optimering.",
           "requestBody": {
             "required": true,
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["operation", "portal", "query"],
+                  "required": ["query"],
                   "properties": {
-                    "operation": {
-                      "type": "string",
-                      "enum": ["searchPortal"],
-                      "description": "Operation type"
-                    },
                     "portal": {
                       "type": "string",
                       "enum": ["mfkn.naevneneshus.dk"],
-                      "description": "Portal domæne (brug 'mfkn.naevneneshus.dk' for Miljø- og Fødevareklagenævnet)"
+                      "default": "mfkn.naevneneshus.dk",
+                      "description": "Portal domæne"
                     },
                     "query": {
                       "type": "string",
-                      "description": "Søgetekst. Kan indeholde akronymer (MBL, NBL), paragrafhenvisninger (§ 72), eller fulde termer. API'et optimerer automatisk."
-                    },
-                    "page": {
-                      "type": "integer",
-                      "default": 1,
-                      "description": "Side nummer for pagination"
-                    },
-                    "pageSize": {
-                      "type": "integer",
-                      "default": 10,
-                      "description": "Antal resultater per side"
+                      "description": "Søgetekst. Kan indeholde akronymer (MBL, NBL) og paragrafhenvisninger (§ 72)."
                     }
                   }
                 },
@@ -191,16 +179,12 @@ function getOpenAPISpec() {
                   "miljøbeskyttelse": {
                     "summary": "Søg med akronym (MBL)",
                     "value": {
-                      "operation": "searchPortal",
-                      "portal": "mfkn.naevneneshus.dk",
                       "query": "Bevisbyrde ved MBL § 72"
                     }
                   },
                   "naturbeskyttelse": {
                     "summary": "Søg i naturbeskyttelsesloven",
                     "value": {
-                      "operation": "searchPortal",
-                      "portal": "mfkn.naevneneshus.dk",
                       "query": "NBL § 3 strandbeskyttelse"
                     }
                   }
@@ -272,10 +256,10 @@ function getOpenAPISpec() {
 
 async function searchPortal(request: SearchRequest) {
   const startTime = Date.now();
-  const { portal, query, originalQuery, page = 1, pageSize = 10, filters, detectedAcronyms } = request;
+  const { portal = 'mfkn.naevneneshus.dk', query, originalQuery, page = 1, pageSize = 10, filters, detectedAcronyms } = request;
 
-  if (!portal || !query) {
-    throw new Error('Missing required parameters: portal and query');
+  if (!query) {
+    throw new Error('Missing required parameter: query');
   }
 
   const supabase = createClient(
@@ -285,12 +269,13 @@ async function searchPortal(request: SearchRequest) {
 
   try {
     // Detect categories from acronyms in the query
-    const detectedCategory = await detectCategoryFromQuery(supabase, portal, query);
+    const detectedCategoryInfo = await detectCategoryFromQuery(supabase, portal, query);
 
     // Merge detected category with existing filters
     const mergedFilters = {
       ...filters,
-      category: detectedCategory || filters?.category,
+      category: detectedCategoryInfo?.id || filters?.category,
+      categoryTitle: detectedCategoryInfo?.title || filters?.categoryTitle,
     };
 
     // Optimize the query further (removes stopwords and category acronyms)
@@ -330,10 +315,10 @@ async function searchPortal(request: SearchRequest) {
       execution_time_ms: executionTime,
       search_payload: searchPayload,
       api_response: {
-        totalCount: data.TotalCount,
-        itemCount: data.Items?.length || 0,
-        firstItemTitle: data.Items?.[0]?.Title || null,
-        detectedCategory: detectedCategory || null,
+        totalCount: data.totalCount || data.TotalCount,
+        itemCount: (data.publications || data.Items || []).length,
+        firstItemTitle: data.publications?.[0]?.title || data.Items?.[0]?.Title || null,
+        detectedCategory: detectedCategoryInfo?.id || null,
       },
     });
 
@@ -467,27 +452,39 @@ async function listPortals() {
 
 function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any) {
   const skip = (page - 1) * pageSize;
-  return {
+
+  const payload: any = {
     term: query,
     skip,
     take: pageSize,
     sort: filters?.sort ?? 0,
-    categories: filters?.category ? [filters.category] : [],
+    parameters: [],
   };
+
+  if (filters?.category) {
+    payload.categories = [{
+      id: filters.category,
+      title: filters.categoryTitle || ''
+    }];
+  } else {
+    payload.categories = [];
+  }
+
+  return payload;
 }
 
 function parseSearchResults(data: any, portal: string) {
-  const items = data.Items || [];
-  const totalCount = data.TotalCount || 0;
+  const items = data.publications || data.Items || [];
+  const totalCount = data.totalCount || data.TotalCount || 0;
 
   const results = items.map((item: any) => ({
-    id: item.Id,
-    title: item.Title,
-    abstract: cleanHtml(item.Abstract || ""),
-    publicationDate: item.PublicationDate,
-    caseNumber: item.CaseNumber,
-    categories: item.Categories || [],
-    url: `https://${portal}/${item.Id}`,
+    id: item.id || item.Id,
+    title: item.title || item.Title,
+    abstract: cleanHtml(item.abstract || item.Abstract || ""),
+    publicationDate: item.published_date || item.publicationDate || item.PublicationDate,
+    caseNumber: item.jnr?.[0] || item.caseNumber || item.CaseNumber,
+    categories: item.categories || item.Categories || [],
+    url: `https://${portal}/${item.id || item.Id}`,
   }));
 
   return {
@@ -513,7 +510,7 @@ function cleanHtml(html: string): string {
     .trim();
 }
 
-async function detectCategoryFromQuery(supabase: any, portal: string, query: string): Promise<string | null> {
+async function detectCategoryFromQuery(supabase: any, portal: string, query: string): Promise<{ id: string; title: string } | null> {
   try {
     const { data: categories } = await supabase
       .from('site_categories')
@@ -541,7 +538,10 @@ async function detectCategoryFromQuery(supabase: any, portal: string, query: str
 
         if (isAcronymMatch || isFullNameMatch) {
           console.log(`Detected category: ${category.category_title} (matched: "${alias}") -> ${category.category_id}`);
-          return category.category_id;
+          return {
+            id: category.category_id,
+            title: category.category_title
+          };
         }
       }
     }
@@ -559,7 +559,7 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
       'praksis', 'afgørelse', 'afgørelser', 'kendelse', 'kendelser',
       'dom', 'domme', 'sag', 'sager', 'om', 'ved', 'for', 'til',
       'søgning', 'søg', 'find', 'finde', 'vise', 'vis', 'alle',
-      'og', 'eller', 'samt'
+      'og', 'eller', 'samt', 'i', 'af', 'på', 'med', 'fra'
     ];
 
     const { data: categories } = await supabase
@@ -584,22 +584,22 @@ async function optimizeQuery(supabase: any, portal: string, query: string): Prom
     }
 
     let words = optimized.split(/\s+/).filter(w => w.length > 0);
+
     words = words.filter(word => {
-      const cleanWord = word.replace(/[.,!?;:]$/, '').toLowerCase();
-      return !stopwords.includes(cleanWord);
+      const cleanWord = word.replace(/[.,!?;:\-]$/, '').toLowerCase();
+      const baseWord = cleanWord.split('-')[0];
+      return !stopwords.includes(cleanWord) && !stopwords.includes(baseWord);
     });
 
-    words = words.filter((word, index, arr) => {
+    const seenParagraphs = new Set<string>();
+    words = words.filter((word) => {
       if (word.includes('§')) {
         const baseNum = word.match(/§\s*\d+/)?.[0];
         if (baseNum) {
-          const isDuplicate = arr.some((other, otherIndex) =>
-            otherIndex !== index &&
-            other.includes('§') &&
-            other.match(/§\s*\d+/)?.[0] === baseNum &&
-            other.length < word.length
-          );
-          return !isDuplicate;
+          if (seenParagraphs.has(baseNum)) {
+            return false;
+          }
+          seenParagraphs.add(baseNum);
         }
       }
       return true;
