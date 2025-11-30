@@ -375,6 +375,7 @@ Regler
 - Returnér KUN værktøjets svartekst (ingen JSON, ingen kodeblokke, ingen ekstra forklaringer).
 - Rens HTML-encoding i værktøjs-output (fx &oslash; → ø, &aelig; → æ).
 - Bevar AI-resuméet og den formaterede liste som værktøjet returnerer (titel, journalnr, kategorier, dato, link osv.).
+- Links skal følge portalen: brug https://${portalDomain}/afgoerelse/{id} for type "ruling" og https://${portalDomain}/nyhed/{id} for type "news" (GUID = id fra API-svaret).
 
 Kategorier fra portalen (til eventuelle brugerønsker):
 ${categoryList || '  • (ingen kategorier registreret – brug portalens standard hvis relevant)'}
@@ -398,7 +399,7 @@ Resultater:
 • Publiceret: 2024-02-29T12:32:22+00:00
 • Myndighed: Miljø og Fødevareklagenævnet
 • AI-resumé (50–100 ord): ...
-• Link: https://${portalDomain}/afgoerelse/...`;
+• Link: https://${portalDomain}/afgoerelse/{id} (eller /nyhed/{id} for type "news")`;
 }
 
 function generateQuickGuide(portalName: string, operationId: string, portal: string): string {
