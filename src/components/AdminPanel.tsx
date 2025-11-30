@@ -31,8 +31,25 @@ export function AdminPanel() {
         throw new Error(data?.error || 'Kunne ikke opdatere portaler');
       }
 
+      const syncResponse = await fetch(`${baseUrl}/functions/v1/sync-categories`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
+        },
+      });
+
+      const syncData = await syncResponse.json();
+
+      if (!syncResponse.ok) {
+        throw new Error(syncData?.error || 'Kunne ikke synkronisere lovområder/kategorier');
+      }
+
       const analyzedCount = data?.analysis?.portalsAnalyzed ?? 0;
-      setRefreshMessage(`Opdatering fuldført. ${analyzedCount} portaler analyseret med nye akronymer og synonymer.`);
+      const syncedSites = syncData?.results?.length ?? 0;
+      setRefreshMessage(
+        `Opdatering fuldført. ${analyzedCount} portaler analyseret og ${syncedSites} portaler synkroniseret med lovområder og forkortelser.`
+      );
     } catch (error: any) {
       setRefreshMessage(`Fejl under opdatering: ${error?.message || error}`);
     } finally {

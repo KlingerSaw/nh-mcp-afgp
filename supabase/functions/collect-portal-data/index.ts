@@ -331,6 +331,7 @@ async function refreshPortalData(supabase: any) {
 
 function extractAcronyms(legalAreas: any[], categories: any[]): any[] {
   const acronyms: any[] = [];
+  const seenAcronyms = new Set<string>();
   const acronymMap = new Map<string, string>();
 
   const allTexts = [
@@ -340,13 +341,13 @@ function extractAcronyms(legalAreas: any[], categories: any[]): any[] {
 
   for (const text of allTexts) {
     const matches = text.match(/\b[A-ZÆØÅ]{2,}\b/g);
-    if (matches) {
-      for (const match of matches) {
-        if (!acronymMap.has(match)) {
-          acronymMap.set(match, text);
+      if (matches) {
+        for (const match of matches) {
+          if (!acronymMap.has(match)) {
+            acronymMap.set(match, text);
+          }
         }
       }
-    }
 
     const paragraphMatch = text.match(/§\s*\d+/g);
     if (paragraphMatch) {
@@ -360,15 +361,67 @@ function extractAcronyms(legalAreas: any[], categories: any[]): any[] {
     }
   }
 
+  for (const area of legalAreas || []) {
+    const aliases = generateAliases(area.area_name);
+
+    for (const alias of aliases) {
+      if (alias !== area.area_name && !seenAcronyms.has(alias)) {
+        seenAcronyms.add(alias);
+        acronyms.push({
+          acronym: alias,
+          full_term: area.area_name,
+          context: 'legal_area_alias',
+        });
+      }
+    }
+  }
+
   for (const [acronym, context] of acronymMap.entries()) {
-    acronyms.push({
-      acronym,
-      full_term: context,
-      context: 'legal_area',
-    });
+    if (!seenAcronyms.has(acronym)) {
+      seenAcronyms.add(acronym);
+      acronyms.push({
+        acronym,
+        full_term: context,
+        context: 'legal_area',
+      });
+    }
   }
 
   return acronyms;
+}
+
+function generateAliases(title: string): string[] {
+  const aliases: string[] = [title];
+
+  const abbreviationMap: Record<string, string[]> = {
+    'Miljøbeskyttelsesloven': ['MBL', 'Miljøbeskyttelse'],
+    'Naturbeskyttelsesloven': ['NBL', 'Naturbeskyttelse'],
+    'Planloven': ['PL'],
+    'Husdyrloven': ['HDL'],
+    'Råstofloven': ['RL'],
+    'Jordforureningsloven': ['JFL'],
+    'Vandløbsloven': ['VL'],
+    'Skovloven': ['SL'],
+  };
+
+  for (const [fullName, abbrevs] of Object.entries(abbreviationMap)) {
+    if (title.includes(fullName)) {
+      aliases.push(...abbrevs);
+    }
+  }
+
+  const words = title.split(/\s+/);
+  if (words.length > 1) {
+    const acronym = words
+      .map(w => w[0])
+      .join('')
+      .toUpperCase();
+    if (acronym.length >= 2 && acronym.length <= 5) {
+      aliases.push(acronym);
+    }
+  }
+
+  return [...new Set(aliases)];
 }
 
 function generateSynonyms(legalAreas: any[], categories: any[]): any[] {

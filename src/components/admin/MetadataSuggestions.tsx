@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Check, X, Clock, Sparkles, FileText } from 'lucide-react';
 
+interface PortalOption {
+  portal: string;
+  name?: string;
+}
+
 interface AcronymSuggestion {
   id: string;
   portal: string;
@@ -27,11 +32,27 @@ export function MetadataSuggestions() {
   const [synonymSuggestions, setSynonymSuggestions] = useState<SynonymSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPortal, setSelectedPortal] = useState<string>('all');
+  const [portals, setPortals] = useState<PortalOption[]>([]);
   const [editingAcronym, setEditingAcronym] = useState<{id: string, fullTerm: string} | null>(null);
 
   useEffect(() => {
     fetchSuggestions();
   }, [selectedPortal]);
+
+  useEffect(() => {
+    loadPortals();
+  }, []);
+
+  async function loadPortals() {
+    const { data } = await supabase
+      .from('portal_metadata')
+      .select('portal, name')
+      .order('portal');
+
+    if (data) {
+      setPortals(data);
+    }
+  }
 
   async function fetchSuggestions() {
     setLoading(true);
@@ -240,9 +261,11 @@ export function MetadataSuggestions() {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Portals</option>
-            <option value="mfkn.naevneneshus.dk">MFKN</option>
-            <option value="pkn.naevneneshus.dk">PKN</option>
-            <option value="ekn.naevneneshus.dk">EKN</option>
+            {portals.map((portal) => (
+              <option key={portal.portal} value={portal.portal}>
+                {portal.name || portal.portal.replace('.naevneneshus.dk', '').toUpperCase()}
+              </option>
+            ))}
           </select>
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Clock className="w-4 h-4" />
