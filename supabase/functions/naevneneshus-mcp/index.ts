@@ -140,10 +140,19 @@ async function searchPortal(request: SearchRequest) {
   );
 
   try {
-    // Optimize the query further
+    // Detect categories from acronyms in the query
+    const detectedCategory = await detectCategoryFromQuery(supabase, portal, query);
+
+    // Merge detected category with existing filters
+    const mergedFilters = {
+      ...filters,
+      category: detectedCategory || filters?.category,
+    };
+
+    // Optimize the query further (removes stopwords and category acronyms)
     const optimizedQuery = await optimizeQuery(supabase, portal, query);
 
-    const searchPayload = buildSearchPayload(optimizedQuery, page, pageSize, filters);
+    const searchPayload = buildSearchPayload(optimizedQuery, page, pageSize, mergedFilters);
     const searchUrl = `https://${portal}/api/Search`;
 
     const response = await fetch(searchUrl, {
@@ -177,6 +186,7 @@ async function searchPortal(request: SearchRequest) {
         totalCount: data.TotalCount,
         itemCount: data.Items?.length || 0,
         firstItemTitle: data.Items?.[0]?.Title || null,
+        detectedCategory: detectedCategory || null,
       },
     });
 
@@ -349,6 +359,44 @@ function decodeHtml(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .trim();
+}
+
+async function detectCategoryFromQuery(supabase: any, portal: string, query: string): Promise<string | null> {
+  try {
+    // Get all categories for this portal
+    const { data: categories } = await supabase
+      .from('site_categories')
+      .select('category_id, category_title, aliases')
+      .eq('portal', portal);
+
+    if (!categories || categories.length === 0) return null;
+
+    // Normalize query for matching (uppercase for acronyms)
+    const queryUpper = query.toUpperCase();
+    const queryWords = query.split(/\s+/);
+
+    // Check each category
+    for (const category of categories) {
+      const aliases = category.aliases || [];
+
+      // Check if any alias matches words in the query
+      for (const alias of aliases) {
+        const aliasUpper = alias.toUpperCase();
+
+        // Match whole words or acronyms
+        if (queryWords.some(word => word.toUpperCase() === aliasUpper) ||
+            queryUpper.includes(aliasUpper)) {
+          console.log(`Detected category: ${category.category_title} (${alias}) -> ${category.category_id}`);
+          return category.category_id;
+        }
+      }
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to detect category:', error);
+    return null;
+  }
 }
 
 async function optimizeQuery(supabase: any, portal: string, query: string): Promise<string> {
