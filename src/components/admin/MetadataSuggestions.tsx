@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Check, X, Clock, Sparkles } from 'lucide-react';
+import { Check, X, Clock, Sparkles, FileText } from 'lucide-react';
 
 interface AcronymSuggestion {
   id: string;
