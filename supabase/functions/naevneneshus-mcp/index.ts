@@ -313,7 +313,15 @@ async function searchPortal(request: SearchRequest) {
   const page = pagination.page || request.page || 1;
   const pageSize = pagination.pageSize || request.pageSize || 10;
   const filters = request.filters;
-  const detectedAcronyms = request.detectedAcronyms;
+  let detectedAcronyms = request.detectedAcronyms;
+
+  if ((!detectedAcronyms || detectedAcronyms.length === 0) && aiDetectedAcronym) {
+    detectedAcronyms = [{
+      acronym: aiDetectedAcronym,
+      full_term: '',
+      source: 'ai'
+    }];
+  }
 
   if (!query) {
     throw new Error('Missing required parameter: query');
