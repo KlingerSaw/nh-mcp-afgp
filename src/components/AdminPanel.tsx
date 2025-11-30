@@ -2,10 +2,43 @@ import { useState } from 'react';
 import { MetadataSuggestions } from './admin/MetadataSuggestions';
 import { AcronymManager } from './admin/AcronymManager';
 import { SynonymManager } from './admin/SynonymManager';
-import { Lightbulb, BookA, FileText } from 'lucide-react';
+import { Lightbulb, BookA, FileText, RefreshCcw } from 'lucide-react';
 
 export function AdminPanel() {
   const [activeView, setActiveView] = useState<'suggestions' | 'acronyms' | 'synonyms'>('suggestions');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+
+  async function handleRefreshAll() {
+    setRefreshing(true);
+    setRefreshMessage('Starter opdatering af alle portaler...');
+
+    try {
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${baseUrl}/functions/v1/collect-portal-data?action=refresh`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${anonKey}`,
+          apikey: anonKey,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Kunne ikke opdatere portaler');
+      }
+
+      const analyzedCount = data?.analysis?.portalsAnalyzed ?? 0;
+      setRefreshMessage(`Opdatering fuldført. ${analyzedCount} portaler analyseret med nye akronymer og synonymer.`);
+    } catch (error: any) {
+      setRefreshMessage(`Fejl under opdatering: ${error?.message || error}`);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -53,6 +86,26 @@ export function AdminPanel() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
+        <div className="bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Portal metadata</h3>
+            <p className="text-sm text-gray-600">Indsaml data og regenerér akronymer og synonymer på tværs af alle portaler.</p>
+            {refreshMessage && (
+              <p className="text-sm text-gray-700 mt-2">{refreshMessage}</p>
+            )}
+          </div>
+          <button
+            onClick={handleRefreshAll}
+            disabled={refreshing}
+            className={`inline-flex items-center px-4 py-2 rounded-lg font-medium transition ${
+              refreshing ? 'bg-gray-200 text-gray-600 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700'
+            }`}
+          >
+            <RefreshCcw className={`w-5 h-5 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Opdaterer...' : 'Opdater alle portaler'}
+          </button>
+        </div>
+
         {activeView === 'suggestions' && <MetadataSuggestions />}
         {activeView === 'acronyms' && <AcronymManager />}
         {activeView === 'synonyms' && <SynonymManager />}
