@@ -86,9 +86,10 @@ export function SearchInterface() {
       try {
         const { portals: fetchedPortals } = await mcpClient.getPortals();
         if (Array.isArray(fetchedPortals) && fetchedPortals.length > 0) {
-          const portalObjects = fetchedPortals.map((p: string) => {
-            const existing = DEFAULT_PORTALS.find(dp => dp.value === p);
-            return existing || { value: p, label: p };
+          const portalObjects = fetchedPortals.map((p: any) => {
+            const portalValue = typeof p === 'string' ? p : p.portal;
+            const existing = DEFAULT_PORTALS.find(dp => dp.value === portalValue);
+            return existing || { value: portalValue, label: p.name || portalValue };
           });
           setPortals(portalObjects);
           setPortal(portalObjects[0].value);
