@@ -728,6 +728,17 @@ function generateAliases(title: string): string[] {
     }
   }
 
+  // Handle categories that start with acronyms like "NBL - beskyttede naturtyper"
+  if (title.startsWith('NBL ')) {
+    aliases.push('NBL');
+  }
+  if (title.startsWith('MBL ')) {
+    aliases.push('MBL');
+  }
+  if (title.startsWith('PL ')) {
+    aliases.push('PL');
+  }
+
   const words = title.split(/\s+/);
   if (words.length > 1) {
     const acronym = words
