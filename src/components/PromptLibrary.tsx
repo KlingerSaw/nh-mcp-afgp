@@ -427,10 +427,18 @@ Input: "støj fra vindmøller"
 - Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
 - Behold § henvisninger i query
-- Returnér KUN værktøjets svar (ingen JSON formatting)
-- Rens HTML entities (ø, æ, å)
 - Brug "page_size" 5, medmindre andet ønskes
 - Sæt "page" hvis brugeren beder om næste side
+
+📊 PRÆSENTATION AF RESULTATER
+
+Værktøjet returnerer formateret tekst. Du skal:
+1. Returnér svaret DIREKTE uden modificering
+2. Fjern HTML entities (ø, æ, å osv.)
+3. Ingen JSON-blokke eller kodeformattering
+4. Bevar alle bullet points (•) og separatorer (───)
+5. Bevar linjespring og formatering
+6. Vis alle links som klikbare
 
 Kategorier fra portalen (reference):
 ${categoryList || '  • (ingen kategorier registreret)'}`;
@@ -445,8 +453,13 @@ Sådan gør du:
 - Brug brugerens tekst som "query"-argument.
 - Sæt "portal"="${portal}" og "page_size"=5 (medmindre brugeren beder om andet).
 - Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
-- Fjern HTML-encoding i svaret (ø, æ, å osv.).
-- Returnér KUN tekstblokken fra værktøjet (ingen JSON eller kodeblokke).`;
+
+📊 Præsentation af Resultater:
+- Returnér værktøjets svar DIREKTE uden modificering
+- Fjern HTML-encoding i svaret (ø, æ, å osv.)
+- Ingen JSON eller kodeblokke
+- Bevar bullet points (•), separatorer (───) og linjespring
+- Vis links som klikbare`;
 }
 
 function generateExampleQueries(
