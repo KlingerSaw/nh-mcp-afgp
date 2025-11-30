@@ -632,16 +632,27 @@ function generateQuickGuide(portalName: string, operationId: string, portal: str
 
 Rolle: Kald værktøjet "${operationId}" med brugerens søgetekst og returnér værktøjets formaterede svar.
 
+⚠️ KRITISK VIGTIGT: Når bruger skriver "kategori:" eller "lovområde:", skal du:
+1. Parse kategorien ud af teksten
+2. Fjern kategori-delen fra query
+3. Send kategori som SEPARAT "category" parameter til værktøjet
+
+Eksempel på korrekt parsing:
+Input: "PFAS-forurening, kategori: jordforureningsloven"
+→ Kald værktøjet med:
+  - query="PFAS-forurening" (uden kategori-delen)
+  - category="Jordforureningsloven" (separat parameter)
+
+Input: "støj, lovområde: MBL"
+→ Kald værktøjet med:
+  - query="støj"
+  - category="Miljøbeskyttelsesloven" (MBL matchet til fuldt navn)
+
 Sådan gør du:
 - Brug brugerens tekst som "query"-argument.
 - Sæt "portal"="${portal}" og "page_size"=5 (medmindre brugeren beder om andet).
 - Hvis brugeren beder om næste side, opdater "page"-argumentet tilsvarende.
 - Ved opfølgningsspørgsmål: kombiner tidligere + ny query
-- Hvis bruger skriver "kategori: [navn]" eller "lovområde: [navn]", send som "category" parameter
-
-Kategori-parsing (VIGTIGT: category er direkte parameter, ikke i filters):
-- "PFAS, kategori: jordforureningsloven" → query="PFAS", category="Jordforureningsloven"
-- "støj, lovområde: MBL" → query="støj", category="Miljøbeskyttelsesloven"
 
 📊 Præsentation af Resultater:
 - START med: "Viser resultat X-Y af Z resultater:"

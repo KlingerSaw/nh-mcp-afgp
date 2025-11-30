@@ -72,6 +72,12 @@ class Tools:
             run(query="vindmøller", portal="ekn.naevneneshus.dk")
         """
 
+        # Debug logging to see what parameters were received
+        print(f"[OpenWebUI Tool] Received parameters:")
+        print(f"  query: {query}")
+        print(f"  category: {category}")
+        print(f"  portal: {portal}")
+
         # Build request payload for MCP endpoint
         # Explicitly include the portal and originalRequest so the MCP server
         # can log the correct portal/query combination in the monitoring UI.
@@ -85,9 +91,12 @@ class Tools:
 
         # Add category filter if provided
         if category:
+            print(f"[OpenWebUI Tool] Adding category to payload: {category}")
             payload["filters"] = {
                 "category": category
             }
+        else:
+            print(f"[OpenWebUI Tool] No category provided")
 
         try:
             # Call MCP endpoint (includes automatic logging to database)
