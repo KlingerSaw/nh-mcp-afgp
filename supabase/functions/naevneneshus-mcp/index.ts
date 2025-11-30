@@ -12,6 +12,7 @@ const categoryCache: Record<string, PortalCategory[]> = {};
 interface SearchRequest {
   portal: string;
   query: string;
+  detectedAcronym?: string | null;
   originalQuery?: string;
   originalRequest?: string;
   page?: number;
@@ -303,6 +304,7 @@ async function searchPortal(request: SearchRequest) {
   const pagination = (request as any).pagination || {};
   const portal = request.portal || 'mfkn.naevneneshus.dk';
   const query = request.query;
+  const aiDetectedAcronym = request.detectedAcronym;
   const originalQuery =
     request.originalRequest ||
     request.originalQuery ||
@@ -331,13 +333,30 @@ async function searchPortal(request: SearchRequest) {
 
     const categories = await getPortalCategories(supabase, portal);
 
-    // Detect categories from acronyms in the query or explicit filter
-    const [detectedCategoryInfo, resolvedFilterCategory] = await Promise.all([
-      detectCategoryFromQuery(categories, originalQuery || query),
-      resolveCategoryFromFilter(categories, filtersWithDefaults.category),
-    ]);
+    // 1. Match AI's detected acronym to category GUID
+    let categoryInfo = null;
+    let aiMissedAcronym = false;
 
-    const chosenCategory = resolvedFilterCategory || detectedCategoryInfo;
+    if (aiDetectedAcronym) {
+      categoryInfo = await matchAcronymToCategory(categories, aiDetectedAcronym);
+
+      if (!categoryInfo) {
+        // Log unknown acronym for admin review
+        await logUnknownAcronym(supabase, portal, aiDetectedAcronym, query);
+      }
+    }
+
+    // 2. Fallback: Check if AI missed an acronym in query
+    if (!categoryInfo) {
+      categoryInfo = await detectCategoryFromQuery(categories, query);
+      if (categoryInfo && !aiDetectedAcronym) {
+        aiMissedAcronym = true;
+      }
+    }
+
+    // 3. Check for explicit filter category
+    const resolvedFilterCategory = await resolveCategoryFromFilter(categories, filtersWithDefaults.category);
+    const chosenCategory = resolvedFilterCategory || categoryInfo;
 
     // Merge detected category with existing filters
     const mergedFilters = {
@@ -353,12 +372,18 @@ async function searchPortal(request: SearchRequest) {
       filters: mergedFilters,
       pagination: { page, pageSize },
       detected_acronyms: detectedAcronyms,
+      ai_detected_acronym: aiDetectedAcronym,
+      ai_missed_acronym: aiMissedAcronym,
     };
 
-    // Optimize the query further (removes stopwords and category acronyms)
-    const optimizedQuery = await optimizeQuery(categories, query);
+    // 4. Use AI's query directly if already optimized, otherwise optimize
+    let finalQuery = query;
+    if (categoryInfo && !aiDetectedAcronym) {
+      // AI didn't optimize, so we need to do it
+      finalQuery = await optimizeQuery(categories, query);
+    }
 
-    const searchPayload = buildSearchPayload(optimizedQuery, page, pageSize, mergedFilters);
+    const searchPayload = buildSearchPayload(finalQuery, page, pageSize, mergedFilters);
     const searchUrl = `https://${portal}/api/Search`;
 
     console.log('Calling search API:', searchUrl);
@@ -392,7 +417,7 @@ async function searchPortal(request: SearchRequest) {
     const responsePayload = {
       success: true,
       portal,
-      query: optimizedQuery,
+      query: finalQuery,
       originalQuery: originalQuery || query,
       results: results.results,
       totalCount: results.totalCount,
@@ -407,13 +432,17 @@ async function searchPortal(request: SearchRequest) {
       query,
       filters: mergedFilters,
       original_query: originalQuery || query,
-      optimized_query: optimizedQuery !== query ? optimizedQuery : null,
+      optimized_query: finalQuery !== query ? finalQuery : null,
       result_count: results.totalCount,
       execution_time_ms: executionTime,
       search_payload: searchPayload,
       api_response: data,
       raw_request: requestLogMetadata,
       tool_response: responsePayload,
+      ai_detected_acronym: aiDetectedAcronym,
+      matched_category_id: chosenCategory?.id,
+      matched_category_title: chosenCategory?.title,
+      ai_missed_acronym: aiMissedAcronym,
     });
 
     // Log detected acronyms
@@ -987,6 +1016,70 @@ async function logAcronyms(supabase: any, portal: string, acronyms: Array<{ acro
     await supabase.from("metadata_suggestions").insert(suggestions);
   } catch (error) {
     console.error("Failed to log acronyms:", error);
+  }
+}
+
+async function matchAcronymToCategory(
+  categories: PortalCategory[],
+  acronym: string
+): Promise<{ id: string; title: string } | null> {
+  if (!acronym) return null;
+
+  const normalizedAcronym = acronym.toUpperCase().trim();
+
+  for (const category of categories) {
+    const aliases = category.aliases || [];
+    const match = aliases.find(
+      alias => alias.toUpperCase() === normalizedAcronym
+    );
+
+    if (match) {
+      return {
+        id: category.category_id,
+        title: category.category_title
+      };
+    }
+  }
+
+  return null;
+}
+
+async function logUnknownAcronym(
+  supabase: any,
+  portal: string,
+  acronym: string,
+  context: string
+) {
+  try {
+    const { data: existing } = await supabase
+      .from('unknown_acronyms')
+      .select('frequency')
+      .eq('portal', portal)
+      .eq('acronym', acronym.toUpperCase())
+      .single();
+
+    if (existing) {
+      await supabase
+        .from('unknown_acronyms')
+        .update({
+          frequency: existing.frequency + 1,
+          last_seen: new Date().toISOString(),
+          context_query: context
+        })
+        .eq('portal', portal)
+        .eq('acronym', acronym.toUpperCase());
+    } else {
+      await supabase
+        .from('unknown_acronyms')
+        .insert({
+          portal,
+          acronym: acronym.toUpperCase(),
+          context_query: context,
+          frequency: 1
+        });
+    }
+  } catch (error) {
+    console.error('Failed to log unknown acronym:', error);
   }
 }
 

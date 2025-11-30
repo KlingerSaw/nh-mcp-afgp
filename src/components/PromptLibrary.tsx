@@ -9,7 +9,9 @@ interface Portal {
 }
 
 interface Category {
+  category_id: string;
   category_title: string;
+  aliases: string[];
 }
 
 interface LegalArea {
@@ -59,7 +61,7 @@ export function PromptLibrary() {
     const [categoriesRes, legalAreasRes, acronymsRes] = await Promise.all([
       supabase
         .from('site_categories')
-        .select('category_title')
+        .select('category_id, category_title, aliases')
         .eq('portal', portal)
         .order('category_title'),
       supabase
@@ -364,42 +366,91 @@ function generateSystemPrompt(
   const categoryList = categories.map(c => `  • ${c.category_title}`).join('\n');
   const legalAreaList = legalAreas.map(l => `  - ${l.area_name}`).join('\n');
 
-  return `SYSTEM PROMPT — ${portalName} Search Tool Caller
+  const acronymTable = categories
+    .flatMap(cat => {
+      const aliases = cat.aliases || [];
+      return aliases
+        .filter(alias => alias.length <= 5 && /^[A-ZÆØÅ]+$/.test(alias))
+        .map(alias => `  ${alias.padEnd(10)} → ${cat.category_title}`);
+    })
+    .join('\n');
 
-Du skal altid kalde værktøjet "${operationId}" for at søge på ${portalName} (${portalDomain}).
+  const stopwordsList = 'praksis, afgørelse, afgørelser, kendelse, kendelser, dom, domme, sag, sager, om, ved, for, til, søgning, søg, find, finde, vise, vis, alle, og, eller, samt, i, af, på, med, fra';
 
-Regler
-- Brug brugerens besked som søgetekst og kald værktøjet med argumentet "query".
-- Sæt argumentet "portal" til "${portalDomain}" (ikke noget andet domæne).
-- Brug "page_size" 5, medmindre brugeren beder om andet; sæt "page" hvis brugeren beder om næste side.
-- Returnér KUN værktøjets svartekst (ingen JSON, ingen kodeblokke, ingen ekstra forklaringer).
-- Rens HTML-encoding i værktøjs-output (fx &oslash; → ø, &aelig; → æ).
-- Bevar AI-resuméet og den formaterede liste som værktøjet returnerer (titel, journalnr, kategorier, dato, link osv.).
-- Links skal følge portalen: brug https://${portalDomain}/afgoerelse/{id} for type "ruling" og https://${portalDomain}/nyhed/{id} for type "news" (GUID = id fra API-svaret).
+  return `SYSTEM PROMPT — ${portalName} Search Tool
 
-Kategorier fra portalen (til eventuelle brugerønsker):
-${categoryList || '  • (ingen kategorier registreret – brug portalens standard hvis relevant)'}
+Du skal kalde værktøjet "${operationId}" for søgninger på ${portalName} (${portalDomain}).
+
+🎯 DIN OPGAVE
+1. Optimér brugerens query
+2. Identificér akronymer
+3. Kald værktøj med ren query + akronym
+
+📋 QUERY OPTIMERING (Dit Ansvar)
+
+Trin 1: Fjern stopwords
+Liste: ${stopwordsList}
+
+Trin 2: Rens § henvisninger
+- Fjern dubletter: "§ 72 § 72" → "§ 72"
+- Fjern stopword-suffikser: "§ 72-praksis" → "§ 72"
+- Behold første forekomst
+
+Trin 3: Identificér akronym fra tabellen
+Akronymer (send som detectedAcronym parameter):
+${acronymTable || '  (ingen akronymer registreret)'}
+
+Trin 4: Fjern akronym fra query
+"Bevisbyrde MBL § 72" → "Bevisbyrde § 72"
+
+📞 VÆRKTØJSKALD
+
+{
+  "query": "Bevisbyrde § 72",
+  "detectedAcronym": "MBL",
+  "portal": "${portalDomain}"
+}
+
+✅ KOMPLETTE EKSEMPLER
+
+Eksempel 1:
+Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
+1. Fjern stopwords: ved, og, søgning, om → "Bevisbyrde MBL § 72 § 72-praksis"
+2. Rens §: § 72 § 72-praksis → § 72 → "Bevisbyrde MBL § 72"
+3. Identificér: MBL → Miljøbeskyttelsesloven
+4. Fjern MBL: "Bevisbyrde § 72"
+5. Kald: {"query": "Bevisbyrde § 72", "detectedAcronym": "MBL"}
+
+Eksempel 2:
+Input: "praksis om NBL § 3 strandbeskyttelse"
+1. Fjern: praksis, om → "NBL § 3 strandbeskyttelse"
+2. § allerede ren
+3. Identificér: NBL → Naturbeskyttelsesloven
+4. Fjern NBL: "§ 3 strandbeskyttelse"
+5. Kald: {"query": "§ 3 strandbeskyttelse", "detectedAcronym": "NBL"}
+
+Eksempel 3:
+Input: "støj fra vindmøller"
+1. Fjern: fra → "støj vindmøller"
+2. Ingen §
+3. Intet akronym fundet
+4. Kald: {"query": "støj vindmøller", "detectedAcronym": null}
+
+⚠️ VIGTIGE REGLER
+
+- Hvis INTET akronym findes, send detectedAcronym: null
+- Fjern ALTID akronymet fra query hvis fundet
+- Behold § henvisninger i query
+- Returnér KUN værktøjets svar (ingen JSON formatting)
+- Rens HTML entities (ø, æ, å)
+- Brug "page_size" 5, medmindre andet ønskes
+- Sæt "page" hvis brugeren beder om næste side
+
+Kategorier fra portalen (reference):
+${categoryList || '  • (ingen kategorier registreret)'}
 
 Lovområder (kontekst):
-${legalAreaList || '  (ingen lovområder registreret)'}
-
-Svarformat (eksempel fra værktøjet):
-Søgning: “Bevisbyrde ved MBL § 72 og søgning om § 72-praksis”
-Kilde: ${portalName} (https://${portalDomain})
-
-Antal afgørelser/nyheder i alt: 7
-Antal vist i denne søgning: 5
-
-Resultater:
-───────────────────────────────
-• Titel: Ophævelse i sag om påbud om måling af støj fra skydebane
-• Journalnr: 22/00421
-• Kategori(er): Miljøbeskyttelsesloven
-• Dato: 2024-02-29
-• Publiceret: 2024-02-29T12:32:22+00:00
-• Myndighed: Miljø og Fødevareklagenævnet
-• AI-resumé (50–100 ord): ...
-• Link: https://${portalDomain}/afgoerelse/{id} (eller /nyhed/{id} for type "news")`;
+${legalAreaList || '  (ingen lovområder registreret)'}`;
 }
 
 function generateQuickGuide(portalName: string, operationId: string, portal: string): string {
