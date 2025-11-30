@@ -45,7 +45,13 @@ Deno.serve(async (req: Request) => {
 
   try {
     const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
-    if (mcpPortalMatch && method === 'POST') {
+    const mcpDetailMatch = path.match(/\/mcp\/([a-z0-9.-]+)\/([a-z0-9-]+)$/);
+
+    if (mcpDetailMatch && method === 'GET') {
+      const portal = mcpDetailMatch[1];
+      const publicationId = mcpDetailMatch[2];
+      return await handlePublicationDetail(portal, publicationId, supabase);
+    } else if (mcpPortalMatch && method === 'POST') {
       const portal = mcpPortalMatch[1];
       const body = await req.json();
       body.portal = portal;
@@ -170,6 +176,67 @@ async function handleMCP(body: SearchRequest & { portal: string }, supabase: any
   }
 }
 
+async function handlePublicationDetail(portal: string, publicationId: string, supabase: any) {
+  console.log(`📄 Fetching publication detail: ${portal}/${publicationId}`);
+
+  try {
+    const apiUrl = `https://${portal}/ws/api/publications`;
+    const payload = {
+      publicationIds: [publicationId]
+    };
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const publications = data.publications || [];
+
+    if (publications.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'Publication not found', portal, publicationId }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const pub = publications[0];
+    const pubType = pub.type || 'ruling';
+    const link = `https://${portal}/${pubType === 'news' ? 'nyhed' : 'afgoerelse'}/${pub.id}`;
+    const cleanBody = decodeHtmlEntities(stripHtmlTags(pub.body || ''));
+
+    const result = {
+      id: pub.id,
+      title: pub.title || 'Uden titel',
+      date: pub.date || null,
+      categories: pub.categories || [],
+      journalNumbers: pub.jnr || [],
+      type: pubType,
+      link,
+      abstract: pub.abstract || '',
+      body: cleanBody
+    };
+
+    console.log(`✅ Fetched publication with ${cleanBody.length} characters`);
+
+    return new Response(
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Error fetching publication:', error);
+    return new Response(
+      JSON.stringify({ error: error.message, portal, publicationId }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
 function formatResults(data: any, portal: string, executionTime: number, page: number, pageSize: number) {
   const total = data.totalCount || 0;
   const publications = data.publications || [];
@@ -189,7 +256,6 @@ function formatResults(data: any, portal: string, executionTime: number, page: n
   const results = publications.map((pub: any) => {
     const pubType = pub.type || 'ruling';
     const link = `https://${portal}/${pubType === 'news' ? 'nyhed' : 'afgoerelse'}/${pub.id}`;
-    const cleanBody = decodeHtmlEntities(stripHtmlTags(pub.body || ''));
 
     return {
       id: pub.id,
@@ -199,7 +265,6 @@ function formatResults(data: any, portal: string, executionTime: number, page: n
       journalNumbers: pub.jnr || [],
       type: pubType,
       link,
-      body: cleanBody,
       abstract: pub.abstract || ''
     };
   });
@@ -318,119 +383,39 @@ async function handleOpenAPISpec(req: Request, supabase: any) {
 
   const portalList = portals?.map(p => p.portal) || [];
 
-  const [categoriesResult, legalAreasResult, acronymsResult, synonymsResult] = await Promise.all([
-    supabase.from('site_categories').select('portal, category_title, aliases').in('portal', portalList),
-    supabase.from('legal_areas').select('portal, area_name').in('portal', portalList),
-    supabase.from('portal_acronyms').select('portal, acronym, full_term').in('portal', portalList),
-    supabase.from('query_synonyms').select('portal, term, synonyms').in('portal', portalList)
-  ]);
-
-  const categoriesByPortal = new Map<string, Array<{title: string, aliases: string[]}>>();
-  const legalAreasByPortal = new Map<string, string[]>();
-  const acronymsByPortal = new Map<string, Array<{acronym: string, full_term: string}>>();
-  const synonymsByPortal = new Map<string, Array<{term: string, synonyms: string[]}>>();
-
-  categoriesResult.data?.forEach(c => {
-    if (!categoriesByPortal.has(c.portal)) categoriesByPortal.set(c.portal, []);
-    categoriesByPortal.get(c.portal)!.push({title: c.category_title, aliases: c.aliases || []});
-  });
-
-  legalAreasResult.data?.forEach(a => {
-    if (!legalAreasByPortal.has(a.portal)) legalAreasByPortal.set(a.portal, []);
-    legalAreasByPortal.get(a.portal)!.push(a.area_name);
-  });
-
-  acronymsResult.data?.forEach(a => {
-    if (!acronymsByPortal.has(a.portal)) acronymsByPortal.set(a.portal, []);
-    acronymsByPortal.get(a.portal)!.push({acronym: a.acronym, full_term: a.full_term});
-  });
-
-  synonymsResult.data?.forEach(s => {
-    if (!synonymsByPortal.has(s.portal)) synonymsByPortal.set(s.portal, []);
-    synonymsByPortal.get(s.portal)!.push({term: s.term, synonyms: s.synonyms || []});
-  });
+  // Metadata is now loaded at runtime during search, not in OpenAPI spec
 
   const paths: any = {};
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
 
   for (const portalMeta of (portals || [])) {
     const operationId = `search_${portalMeta.portal.replace(/[^a-z0-9]/gi, '_')}`;
-    const categories = categoriesByPortal.get(portalMeta.portal) || [];
-    const legalAreas = legalAreasByPortal.get(portalMeta.portal) || [];
-    const acronyms = acronymsByPortal.get(portalMeta.portal) || [];
-    const synonyms = synonymsByPortal.get(portalMeta.portal) || [];
 
     let description = `DU ER SØGEASSISTENT FOR ${portalMeta.name || portalMeta.portal}
 
-METADATA:
-- Portal: ${portalMeta.portal}
-- Fokusområde: ${portalMeta.domain_focus || 'Administrative afgørelser'}
+OPGAVE: Optimer brugerens søgning til kort, effektiv query.
 
-LOVOMRÅDER: ${legalAreas.slice(0, 10).join(', ') || 'Ingen specificeret'}
+REGLER:
+- Fjern filler words: og, eller, i, på, for, af, at, der, det, den, de, en, et, som, med, til, ved, om, søgning, søg, søge, praksis, regler, siger, hvad, hvordan
+- Ekspander kendte akronymer (f.eks. MBL → Miljøbeskyttelsesloven)
+- Behold kerneord og paragrafnumre (§ 72)
+- Send både originalQuery og query
 
-KATEGORIER (med aliases):
-${categories.slice(0, 15).map(c => `- ${c.title}${c.aliases.length > 0 ? ` (aliases: ${c.aliases.join(', ')})` : ''}`).join('\n') || '- Ingen kategorier'}
-
-AKRONYMER:
-${acronyms.slice(0, 10).map(a => `- ${a.acronym} → ${a.full_term}`).join('\n') || '- Ingen akronymer'}
-
-SYNONYMER:
-${synonyms.slice(0, 10).map(s => `- ${s.term} → ${s.synonyms.join(', ')}`).join('\n') || '- Ingen synonymer'}
-
-VIGTIG OPGAVE - QUERY OPTIMERING:
-
-Du SKAL altid optimere søgestrengen! Din opgave er at lave en kort, effektiv søgestreng.
-
-TRIN-FOR-TRIN PROCES:
-1. Find KERNEORDENE i brugerens spørgsmål
-2. Ekspander ALLE akronymer (brug listen ovenfor)
-3. FJERN filler words: og, eller, i, på, for, af, at, der, det, den, de, en, et, som, med, til, ved, om, søgning, søg, søge, praksis, regler, siger, hvad, hvordan
-4. Tilføj relevante synonymer hvis det giver mening
-5. Ret stavefejl
-
-KRITISK: query SKAL være ANDERLEDES og KORTERE end originalQuery!
-
-EKSEMPLER PÅ KORREKT OPTIMERING:
-
+EKSEMPLER:
 Input: "hvad siger reglerne om jordforurening?"
 Output query: "jordforurening"
-Forklaring: Fjernet "hvad siger reglerne om"
 
-Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
+Input: "Bevisbyrde ved MBL § 72 og søgning om praksis"
 Output query: "Bevisbyrde Miljøbeskyttelsesloven § 72"
-Forklaring: Ekspanderet MBL, fjernet "og søgning om" og "praksis"
 
-Input: "MBL § 72 om støj"
-Output query: "Miljøbeskyttelsesloven § 72 støj støjgener"
-Forklaring: Ekspanderet MBL, tilføjet synonym "støjgener"
+UKENDTE AKRONYMER/SYNONYMER:
+Hvis du finder et ukendt akronym eller synonym, send i response:
+{
+  "detectedAcronyms": [{"acronym": "ABC", "context": "query tekst"}],
+  "detectedSynonyms": [{"term": "X", "possibleSynonym": "Y"}]
+}
 
-Input: "praksis om byggetilladelse i landzone"
-Output query: "byggetilladelse landzone"
-Forklaring: Fjernet "praksis om" og "i"
-
-Input: "kan jeg få hjælp til at finde afgørelser om hundehold"
-Output query: "hundehold afgørelser"
-Forklaring: Fjernet hele spørgsmålsdelen, beholdt kerneord
-
-Input: "hvad er den seneste praksis vedrørende parkeringsforhold"
-Output query: "parkeringsforhold"
-Forklaring: Fjernet alt filler, fokus på kerneordet
-
-FUNKTIONSKALD:
-Send ALTID både originalQuery (brugerens præcise input) og query (din optimerede, kortere version).
-
-KVALITETSKONTROL:
-- Hvis query === originalQuery, så har du IKKE optimeret korrekt!
-- Query skal typisk være 30-70% kortere end originalQuery
-- Behold paragrafnumre (§ 72) og juridiske termer
-- Ekspander ALLE akronymer
-
-EFTER RESULTAT:
-Generer 50-100 ords dansk resume baseret på:
-- Resultaternes body tekst (hovedindhold)
-- Kategorier og mønstre på tværs af resultater
-- Vigtigste juridiske fund og konklusioner
-- Dato og relevans for brugerens spørgsmål`;
+VIGTIGT: query SKAL være kortere end originalQuery!`;
 
     paths[`/mcp/${portalMeta.portal}`] = {
       post: {
@@ -499,8 +484,7 @@ Generer 50-100 ords dansk resume baseret på:
                           journalNumbers: { type: 'array', items: { type: 'string' } },
                           type: { type: 'string', enum: ['ruling', 'news'] },
                           link: { type: 'string', format: 'uri' },
-                          body: { type: 'string', description: 'Clean text uden HTML' },
-                          abstract: { type: 'string' }
+                          abstract: { type: 'string', description: 'Kort sammendrag (100-200 ord)' }
                         }
                       }
                     },
@@ -571,6 +555,61 @@ Generer 50-100 ords dansk resume baseret på:
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      '/mcp/{portal}/{publicationId}': {
+        get: {
+          summary: 'Hent fuld publikation med body tekst',
+          description: 'Brug dette endpoint når bruger ønsker at læse hele afgørelsen eller generere AI resume. Body teksten returneres så AI kan analysere og opsummere den.',
+          operationId: 'getPublicationDetail',
+          'x-openai-isConsequential': false,
+          parameters: [
+            {
+              name: 'portal',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Portal hostname (f.eks. mfkn.naevneneshus.dk)',
+              example: 'mfkn.naevneneshus.dk'
+            },
+            {
+              name: 'publicationId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+              description: 'Publication ID fra search results',
+              example: '2023-123'
+            }
+          ],
+          responses: {
+            '200': {
+              description: 'Fuld publication med body tekst',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      title: { type: 'string' },
+                      date: { type: 'string', nullable: true },
+                      categories: { type: 'array', items: { type: 'string' } },
+                      journalNumbers: { type: 'array', items: { type: 'string' } },
+                      type: { type: 'string', enum: ['ruling', 'news'] },
+                      link: { type: 'string', format: 'uri' },
+                      abstract: { type: 'string' },
+                      body: { type: 'string', description: 'Fuld tekst uden HTML (typisk 1000-3000 ord)' }
+                    }
+                  }
+                }
+              }
+            },
+            '404': {
+              description: 'Publication ikke fundet'
+            },
+            '500': {
+              description: 'Serverfejl'
             }
           }
         }
