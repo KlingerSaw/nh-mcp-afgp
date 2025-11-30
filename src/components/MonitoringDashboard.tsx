@@ -9,6 +9,7 @@ interface ConnectionLog {
   user_agent: string;
   auth_type: string;
   ip_address: string;
+  request_headers?: Record<string, string | null> | null;
   tools_discovered: number;
   success: boolean;
   error_message: string | null;
@@ -283,15 +284,49 @@ export function MonitoringDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <Activity className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium text-slate-600">Total Connections</span>
+            </div>
+            <p className="text-3xl font-bold text-blue-600">{stats.totalConnections}</p>
+            <p className="text-xs text-slate-500 mt-1">Herunder OpenWebUI kald til /openapi.json</p>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+              <span className="text-sm font-medium text-slate-600">Succesrate</span>
+            </div>
+            <p className="text-3xl font-bold text-emerald-600">
+              {stats.totalConnections === 0
+                ? '0%'
+                : `${Math.round((stats.successfulConnections / stats.totalConnections) * 100)}%`}
+            </p>
+            <p className="text-xs text-slate-500 mt-1">{stats.successfulConnections} af {stats.totalConnections} forbindelser</p>
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-2">
               <Search className="w-5 h-5 text-orange-600" />
               <span className="text-sm font-medium text-slate-600">Total Queries</span>
             </div>
             <p className="text-3xl font-bold text-orange-600">{stats.totalQueries}</p>
+            <p className="text-xs text-slate-500 mt-1">Seneste søgninger fra tools</p>
           </div>
 
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+            <div className="flex items-center gap-3 mb-2">
+              <Globe className="w-5 h-5 text-indigo-600" />
+              <span className="text-sm font-medium text-slate-600">Tools discovered</span>
+            </div>
+            <p className="text-3xl font-bold text-indigo-600">{stats.toolsDiscovered}</p>
+            <p className="text-xs text-slate-500 mt-1">Beregnet fra OpenAPI kald</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-2">
               <Clock className="w-5 h-5 text-indigo-600" />
@@ -322,6 +357,73 @@ export function MonitoringDashboard() {
               <span className="text-sm font-medium text-slate-600">Errors</span>
             </div>
             <p className="text-3xl font-bold text-red-600">{stats.errors}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
+          <div className="p-6 border-b border-slate-200">
+            <h2 className="text-xl font-semibold text-slate-900 flex items-center gap-2">
+              <Globe className="w-5 h-5 text-blue-600" />
+              Connection Logs
+            </h2>
+            <p className="text-sm text-slate-600 mt-1">Overvåg OpenWebUI kald til funktionen og OpenAPI spec'en</p>
+          </div>
+          <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+            {connectionLogs.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <Globe className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p>Ingen forbindelser endnu</p>
+                <p className="text-sm mt-1">Når OpenWebUI henter /openapi.json eller kalder tools vises de her</p>
+              </div>
+            ) : (
+              connectionLogs.map((log) => (
+                <div key={log.id} className="p-4 hover:bg-slate-50 transition">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                          log.success
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-red-50 text-red-700'
+                        }`}>
+                          {log.success ? 'Success' : 'Failed'}
+                        </span>
+                        <span className="text-slate-700 font-mono text-xs">{log.method}</span>
+                        <span className="text-slate-900 font-medium">{log.endpoint}</span>
+                      </div>
+                      <div className="text-xs text-slate-600">User-Agent: {log.user_agent}</div>
+                      <div className="text-xs text-slate-600 flex flex-wrap gap-3">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3 h-3" />
+                          {log.auth_type || 'none'}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Globe className="w-3 h-3" />
+                          {log.ip_address}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Search className="w-3 h-3" />
+                          {log.tools_discovered} tools
+                        </span>
+                      </div>
+                      {log.request_headers && (
+                        <div className="text-xs text-slate-500">
+                          Host: {log.request_headers['host'] || 'ukendt'} • Accept: {log.request_headers['accept'] || 'n/a'}
+                        </div>
+                      )}
+                      {log.error_message && (
+                        <div className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded border border-red-100">
+                          {log.error_message}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500 whitespace-nowrap">
+                      {formatRelativeTime(log.created_at)}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
