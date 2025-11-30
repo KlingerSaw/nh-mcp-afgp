@@ -430,11 +430,14 @@ async function searchPortal(request: SearchRequest) {
       finalQuery = await optimizeQuery(categories, finalQueryForSearch);
     }
 
-    const searchPayload = buildSearchPayload(finalQuery, page, pageSize, mergedFilters);
+    const searchPayload = buildSearchPayload(finalQuery, page, pageSize, mergedFilters, aiDetectedAcronym);
     const searchUrl = `https://${portal}/api/Search`;
 
     console.log('Calling search API:', searchUrl);
     console.log('Search payload:', JSON.stringify(searchPayload));
+    if (aiDetectedAcronym) {
+      console.log(`Including detectedAcronym in payload: ${aiDetectedAcronym}`);
+    }
 
     const response = await fetch(searchUrl, {
       method: "POST",
@@ -739,7 +742,7 @@ function generateAliases(title: string): string[] {
   return [...new Set(aliases)];
 }
 
-function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any) {
+function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any, detectedAcronym?: string) {
   const normalizedFilters: any = {};
 
   if (filters?.dateRange?.start || filters?.dateRange?.end) {
@@ -757,7 +760,7 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
     normalizedFilters.categoryTitle = filters.categoryTitle;
   }
 
-  return {
+  const payload: any = {
     query,
     ...(Object.keys(normalizedFilters).length > 0 ? { filters: normalizedFilters } : {}),
     pagination: {
@@ -765,6 +768,12 @@ function buildSearchPayload(query: string, page: number, pageSize: number, filte
       pageSize,
     },
   };
+
+  if (detectedAcronym) {
+    payload.detectedAcronym = detectedAcronym;
+  }
+
+  return payload;
 }
 
 function parseSearchResults(data: any, portal: string, query?: string) {
