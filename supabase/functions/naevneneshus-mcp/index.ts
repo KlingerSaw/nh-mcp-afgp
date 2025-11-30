@@ -164,7 +164,7 @@ async function searchPortal(request: SearchRequest) {
     const results = parseSearchResults(data, portal);
     const executionTime = Date.now() - startTime;
 
-    // Log the query with optimization tracking
+    // Log the query with optimization tracking and payload/response
     await logQuery(supabase, {
       portal,
       query,
@@ -172,6 +172,12 @@ async function searchPortal(request: SearchRequest) {
       optimized_query: optimizedQuery !== query ? optimizedQuery : null,
       result_count: results.totalCount,
       execution_time_ms: executionTime,
+      search_payload: searchPayload,
+      api_response: {
+        totalCount: data.TotalCount,
+        itemCount: data.Items?.length || 0,
+        firstItemTitle: data.Items?.[0]?.Title || null,
+      },
     });
 
     // Auto-detect acronyms if not provided
@@ -397,6 +403,15 @@ async function logQuery(supabase: any, data: any) {
     // Include optimized_query if it differs from query
     if (data.optimized_query) {
       logData.optimized_query = data.optimized_query;
+    }
+
+    // Include payload and response if present
+    if (data.search_payload) {
+      logData.search_payload = data.search_payload;
+    }
+
+    if (data.api_response) {
+      logData.api_response = data.api_response;
     }
 
     // Only include error_message if present

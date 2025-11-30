@@ -30,6 +30,8 @@ interface QueryLog {
   error_message: string | null;
   user_identifier: string;
   created_at: string;
+  search_payload?: any;
+  api_response?: any;
 }
 
 interface Stats {
@@ -343,21 +345,27 @@ export function MonitoringDashboard() {
                     <div className="p-4 hover:bg-slate-50 transition">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
-                            {log.original_query && (
+                            {log.original_query && log.original_query !== log.query && (
                               <div className="text-sm text-slate-500 mb-1">
-                                Original: "{log.original_query}"
+                                <span className="font-semibold">Original:</span> "{log.original_query}"
                               </div>
                             )}
-                            <div className="font-medium text-slate-900 mb-1">
-                              {log.optimized_query ? (
-                                <>
-                                  Optimeret: <span className="text-blue-600">"{log.optimized_query}"</span>
-                                </>
-                              ) : (
-                                "{log.query}"
-                              )}
-                            </div>
-                            <div className="text-sm text-slate-600">
+                            {log.query && (log.optimized_query || log.original_query !== log.query) && (
+                              <div className="text-sm text-slate-700 mb-1">
+                                <span className="font-semibold">OpenWebUI:</span> "{log.query}"
+                              </div>
+                            )}
+                            {log.optimized_query && (
+                              <div className="font-medium text-slate-900 mb-1">
+                                <span className="font-semibold">Søgt med:</span> <span className="text-blue-600">"{log.optimized_query}"</span>
+                              </div>
+                            )}
+                            {!log.optimized_query && (
+                              <div className="font-medium text-slate-900 mb-1">
+                                <span className="font-semibold">Søgt med:</span> "{log.query}"
+                              </div>
+                            )}
+                            <div className="text-sm text-slate-600 mt-2">
                               Portal: <span className="font-mono text-xs">{log.portal}</span>
                             </div>
                           </div>
@@ -393,6 +401,32 @@ export function MonitoringDashboard() {
                             </span>
                           )}
                         </div>
+
+                        {(log.search_payload || log.api_response) && (
+                          <details className="mt-3">
+                            <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 font-medium">
+                              📋 Vis Payload & Response
+                            </summary>
+                            <div className="mt-2 space-y-3">
+                              {log.search_payload && (
+                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                                  <div className="text-xs font-semibold text-slate-700 mb-1">Search Payload:</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                    {JSON.stringify(log.search_payload, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                              {log.api_response && (
+                                <div className="bg-slate-50 p-3 rounded border border-slate-200">
+                                  <div className="text-xs font-semibold text-slate-700 mb-1">API Response:</div>
+                                  <pre className="text-xs text-slate-800 overflow-x-auto">
+                                    {JSON.stringify(log.api_response, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </details>
+                        )}
 
                         {log.error_message && (
                           <div className="text-red-600 text-xs bg-red-50 p-2 rounded mt-2">
