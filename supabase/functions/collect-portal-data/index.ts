@@ -52,9 +52,11 @@ Deno.serve(async (req: Request) => {
       return await collectAllPortalData(supabase);
     } else if (action === 'analyze') {
       return await analyzePortalData(supabase);
+    } else if (action === 'refresh') {
+      return await refreshPortalData(supabase);
     } else {
       return new Response(
-        JSON.stringify({ error: 'Invalid action. Use ?action=collect or ?action=analyze' }),
+        JSON.stringify({ error: 'Invalid action. Use ?action=collect, ?action=analyze or ?action=refresh' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -68,6 +70,19 @@ Deno.serve(async (req: Request) => {
 });
 
 async function collectAllPortalData(supabase: any) {
+  const results = await performPortalCollection(supabase);
+
+  return new Response(
+    JSON.stringify({
+      message: 'Data collection completed',
+      results,
+      timestamp: new Date().toISOString(),
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+async function performPortalCollection(supabase: any) {
   const results: PortalData[] = [];
 
   for (const portal of DEFAULT_PORTALS) {
@@ -82,14 +97,7 @@ async function collectAllPortalData(supabase: any) {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  return new Response(
-    JSON.stringify({
-      message: 'Data collection completed',
-      results,
-      timestamp: new Date().toISOString(),
-    }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return results;
 }
 
 async function collectPortalData(portal: string): Promise<PortalData> {
@@ -200,6 +208,26 @@ async function storePortalData(supabase: any, portalData: PortalData) {
 }
 
 async function analyzePortalData(supabase: any) {
+  const analysis = await performPortalAnalysis(supabase);
+
+  if ('error' in analysis) {
+    return new Response(
+      JSON.stringify({ error: analysis.error }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({
+      message: 'Analysis completed',
+      results: analysis.results,
+      timestamp: new Date().toISOString(),
+    }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+async function performPortalAnalysis(supabase: any): Promise<{ results: any[] } | { error: string }> {
   console.log('Starting analysis of portal data...');
 
   const { data: portals } = await supabase
@@ -207,13 +235,10 @@ async function analyzePortalData(supabase: any) {
     .select('portal');
 
   if (!portals || portals.length === 0) {
-    return new Response(
-      JSON.stringify({ error: 'No portal data found. Run ?action=collect first.' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return { error: 'No portal data found. Run ?action=collect first.' };
   }
 
-  const analysisResults = [];
+  const analysisResults = [] as any[];
 
   for (const { portal } of portals) {
     console.log(`Analyzing ${portal}...`);
@@ -270,10 +295,34 @@ async function analyzePortalData(supabase: any) {
     });
   }
 
+  return { results: analysisResults };
+}
+
+async function refreshPortalData(supabase: any) {
+  const collectionResults = await performPortalCollection(supabase);
+  const analysis = await performPortalAnalysis(supabase);
+
+  if ('error' in analysis) {
+    return new Response(
+      JSON.stringify({
+        error: analysis.error,
+        collection: { portalsProcessed: collectionResults.length, results: collectionResults },
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   return new Response(
     JSON.stringify({
-      message: 'Analysis completed',
-      results: analysisResults,
+      message: 'Collection and analysis completed',
+      collection: {
+        portalsProcessed: collectionResults.length,
+        results: collectionResults,
+      },
+      analysis: {
+        portalsAnalyzed: analysis.results.length,
+        results: analysis.results,
+      },
       timestamp: new Date().toISOString(),
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
