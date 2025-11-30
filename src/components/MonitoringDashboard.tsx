@@ -180,7 +180,7 @@ export function MonitoringDashboard() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'connection_logs',
         },
@@ -192,7 +192,7 @@ export function MonitoringDashboard() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'query_logs',
         },
