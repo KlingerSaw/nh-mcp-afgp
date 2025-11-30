@@ -11,6 +11,8 @@ interface SearchRequest {
   originalQuery: string;
   page?: number;
   pageSize?: number;
+  detectedAcronyms?: Array<{acronym: string, context: string}>;
+  detectedSynonyms?: Array<{term: string, possibleSynonym: string}>;
 }
 
 function generateRequestId(): string {
@@ -46,8 +48,13 @@ Deno.serve(async (req: Request) => {
   try {
     const mcpPortalMatch = path.match(/\/mcp\/([a-z0-9.-]+)$/);
     const mcpDetailMatch = path.match(/\/mcp\/([a-z0-9.-]+)\/([a-z0-9-]+)$/);
+    const mcpSuggestMatch = path.match(/\/mcp\/([a-z0-9.-]+)\/suggest$/);
 
-    if (mcpDetailMatch && method === 'GET') {
+    if (mcpSuggestMatch && method === 'POST') {
+      const portal = mcpSuggestMatch[1];
+      const body = await req.json();
+      return await handleSuggestion(portal, body, supabase);
+    } else if (mcpDetailMatch && method === 'GET') {
       const portal = mcpDetailMatch[1];
       const publicationId = mcpDetailMatch[2];
       return await handlePublicationDetail(portal, publicationId, supabase);
@@ -96,7 +103,7 @@ Deno.serve(async (req: Request) => {
 
 async function handleMCP(body: SearchRequest & { portal: string }, supabase: any) {
   const startTime = Date.now();
-  const { query, originalQuery, portal, page = 1, pageSize = 5 } = body;
+  const { query, originalQuery, portal, page = 1, pageSize = 5, detectedAcronyms, detectedSynonyms } = body;
 
   if (!query || !originalQuery) {
     return new Response(
@@ -109,6 +116,64 @@ async function handleMCP(body: SearchRequest & { portal: string }, supabase: any
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
+
+  // Auto-submit detected metadata as suggestions
+  const suggestionsCreated = { acronyms: 0, synonyms: 0 };
+
+  if (detectedAcronyms && detectedAcronyms.length > 0) {
+    for (const item of detectedAcronyms) {
+      try {
+        const { data: existing } = await supabase
+          .from('suggested_acronyms')
+          .select('id')
+          .eq('portal', portal)
+          .eq('acronym', item.acronym)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+        if (!existing) {
+          await supabase.from('suggested_acronyms').insert({
+            portal,
+            acronym: item.acronym,
+            example_query: item.context || originalQuery,
+            suggested_by: 'openwebui'
+          });
+          suggestionsCreated.acronyms++;
+          console.log(`💡 Auto-created acronym suggestion: ${item.acronym}`);
+        }
+      } catch (err) {
+        console.error(`Failed to create acronym suggestion for ${item.acronym}:`, err);
+      }
+    }
+  }
+
+  if (detectedSynonyms && detectedSynonyms.length > 0) {
+    for (const item of detectedSynonyms) {
+      try {
+        const { data: existing } = await supabase
+          .from('suggested_synonyms')
+          .select('id')
+          .eq('portal', portal)
+          .eq('term', item.term)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+        if (!existing) {
+          await supabase.from('suggested_synonyms').insert({
+            portal,
+            term: item.term,
+            synonym_suggestions: [item.possibleSynonym],
+            example_query: originalQuery,
+            suggested_by: 'openwebui'
+          });
+          suggestionsCreated.synonyms++;
+          console.log(`💡 Auto-created synonym suggestion: ${item.term} → ${item.possibleSynonym}`);
+        }
+      } catch (err) {
+        console.error(`Failed to create synonym suggestion for ${item.term}:`, err);
+      }
+    }
   }
 
   try {
@@ -151,8 +216,16 @@ async function handleMCP(body: SearchRequest & { portal: string }, supabase: any
 
     console.log(`✅ Found ${resultCount} results in ${executionTime}ms`);
 
+    const results = formatResults(data, portal, executionTime, page, pageSize);
+
+    // Add metadata about suggestions created
+    if (suggestionsCreated.acronyms > 0 || suggestionsCreated.synonyms > 0) {
+      results.metadata = results.metadata || {};
+      results.metadata.suggestionsCreated = suggestionsCreated;
+    }
+
     return new Response(
-      JSON.stringify(formatResults(data, portal, executionTime, page, pageSize)),
+      JSON.stringify(results),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
@@ -171,6 +244,142 @@ async function handleMCP(body: SearchRequest & { portal: string }, supabase: any
 
     return new Response(
       JSON.stringify({ error: error.message, portal, originalQuery, query }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+async function handleSuggestion(portal: string, body: any, supabase: any) {
+  console.log(`💡 Received suggestion for ${portal}: ${body.type}`);
+
+  const { type, acronym, fullTermSuggestion, term, synonymSuggestions, exampleQuery, suggestedBy = 'openwebui' } = body;
+
+  if (!type || !exampleQuery) {
+    return new Response(
+      JSON.stringify({ error: 'type and exampleQuery are required' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  try {
+    if (type === 'acronym') {
+      if (!acronym) {
+        return new Response(
+          JSON.stringify({ error: 'acronym is required for type=acronym' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Check if this acronym suggestion already exists as pending
+      const { data: existing } = await supabase
+        .from('suggested_acronyms')
+        .select('id')
+        .eq('portal', portal)
+        .eq('acronym', acronym)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (existing) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Dette akronym er allerede foreslået og afventer godkendelse',
+            suggestionId: existing.id,
+            alreadyExists: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from('suggested_acronyms')
+        .insert({
+          portal,
+          acronym,
+          full_term_suggestion: fullTermSuggestion || null,
+          example_query: exampleQuery,
+          suggested_by: suggestedBy
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log(`✅ Created acronym suggestion: ${acronym}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Akronym forslag gemt - afventer admin godkendelse',
+          suggestionId: data.id
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } else if (type === 'synonym') {
+      if (!term || !synonymSuggestions) {
+        return new Response(
+          JSON.stringify({ error: 'term and synonymSuggestions are required for type=synonym' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Check if this synonym suggestion already exists as pending
+      const { data: existing } = await supabase
+        .from('suggested_synonyms')
+        .select('id')
+        .eq('portal', portal)
+        .eq('term', term)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (existing) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Dette synonym er allerede foreslået og afventer godkendelse',
+            suggestionId: existing.id,
+            alreadyExists: true
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const { data, error } = await supabase
+        .from('suggested_synonyms')
+        .insert({
+          portal,
+          term,
+          synonym_suggestions: synonymSuggestions,
+          example_query: exampleQuery,
+          suggested_by: suggestedBy
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log(`✅ Created synonym suggestion: ${term}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Synonym forslag gemt - afventer admin godkendelse',
+          suggestionId: data.id
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } else {
+      return new Response(
+        JSON.stringify({ error: 'type must be "acronym" or "synonym"' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  } catch (error) {
+    console.error('Error saving suggestion:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
