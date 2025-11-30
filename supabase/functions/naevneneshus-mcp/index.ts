@@ -420,7 +420,7 @@ async function logAcronymSuggestions(supabase: any, portal: string, query: strin
   try {
     // Check which acronyms are already known
     const { data: existingAcronyms } = await supabase
-      .from("acronyms")
+      .from("portal_acronyms")
       .select("acronym")
       .eq("portal", portal);
 
