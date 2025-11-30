@@ -161,6 +161,7 @@ async function searchPortal(request: SearchRequest) {
     const results = parseSearchResults(data, portal);
     const executionTime = Date.now() - startTime;
 
+    // Log the query
     await logQuery(supabase, {
       portal,
       query,
@@ -168,6 +169,20 @@ async function searchPortal(request: SearchRequest) {
       result_count: results.totalCount,
       execution_time_ms: executionTime,
     });
+
+    // Auto-detect acronyms if not provided
+    let acronymsToLog = detectedAcronyms;
+    if (!acronymsToLog || acronymsToLog.length === 0) {
+      const queryToAnalyze = originalQuery || query;
+      acronymsToLog = detectAcronyms(queryToAnalyze);
+    }
+
+    // Log acronym suggestions in background (don't wait)
+    if (acronymsToLog && acronymsToLog.length > 0) {
+      logAcronymSuggestions(supabase, portal, originalQuery || query, acronymsToLog).catch(err => {
+        console.error("Background acronym logging failed:", err);
+      });
+    }
 
     return {
       success: true,
@@ -371,6 +386,79 @@ async function logQuery(supabase: any, data: any) {
     await supabase.from("query_logs").insert(logData);
   } catch (error) {
     console.error("Failed to log query:", error);
+  }
+}
+
+function detectAcronyms(text: string): Array<{acronym: string; context: string}> {
+  // Match 2-5 uppercase letters, optionally followed by digits (e.g., MBL, § 72)
+  const acronymPattern = /\b[A-ZÆØÅ]{2,5}\b/g;
+  const matches = text.match(acronymPattern) || [];
+
+  // Get unique acronyms with context
+  const uniqueAcronyms = new Set<string>();
+  const results: Array<{acronym: string; context: string}> = [];
+
+  matches.forEach(acronym => {
+    if (!uniqueAcronyms.has(acronym)) {
+      uniqueAcronyms.add(acronym);
+      // Extract context (20 chars before and after)
+      const index = text.indexOf(acronym);
+      const start = Math.max(0, index - 20);
+      const end = Math.min(text.length, index + acronym.length + 20);
+      const context = text.substring(start, end).trim();
+
+      results.push({ acronym, context });
+    }
+  });
+
+  return results;
+}
+
+async function logAcronymSuggestions(supabase: any, portal: string, query: string, acronyms: Array<{acronym: string; context: string}>) {
+  if (!acronyms || acronyms.length === 0) return;
+
+  try {
+    // Check which acronyms are already known
+    const { data: existingAcronyms } = await supabase
+      .from("acronyms")
+      .select("acronym")
+      .eq("portal", portal);
+
+    const knownAcronyms = new Set((existingAcronyms || []).map((a: any) => a.acronym));
+
+    // Filter to only unknown acronyms
+    const unknownAcronyms = acronyms.filter(a => !knownAcronyms.has(a.acronym));
+
+    if (unknownAcronyms.length === 0) return;
+
+    // Check if we already have pending suggestions for these
+    const { data: pendingSuggestions } = await supabase
+      .from("suggested_acronyms")
+      .select("acronym")
+      .eq("portal", portal)
+      .eq("status", "pending")
+      .in("acronym", unknownAcronyms.map(a => a.acronym));
+
+    const alreadySuggested = new Set((pendingSuggestions || []).map((s: any) => s.acronym));
+
+    // Insert new suggestions
+    const newSuggestions = unknownAcronyms
+      .filter(a => !alreadySuggested.has(a.acronym))
+      .map(a => ({
+        portal,
+        acronym: a.acronym,
+        full_term_suggestion: null,
+        example_query: query,
+        status: "pending",
+        suggested_by: "openwebui",
+      }));
+
+    if (newSuggestions.length > 0) {
+      await supabase.from("suggested_acronyms").insert(newSuggestions);
+      console.log(`Created ${newSuggestions.length} new acronym suggestions`);
+    }
+  } catch (error) {
+    console.error("Failed to log acronym suggestions:", error);
   }
 }
 
