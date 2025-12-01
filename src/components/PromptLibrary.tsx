@@ -468,23 +468,39 @@ VIGTIGT: Du skal IKKE parse eller fjerne kategori-syntaksen selv. Serveren hånd
 - Fjernelse af kategori-tekst fra søgningen
 - Tilføjelse af kategori-filter i API request
 
-📞 VÆRKTØJSKALD
+📞 VÆRKTØJSKALD FORMAT (OBLIGATORISK!)
 
-Uden kategori:
+⚠️ KRITISK: ALTID send disse 4 parametre til værktøjet:
+
+{
+  "query": "<optimeret query efter alle trin>",
+  "detectedAcronym": "<akronym fra tabel ELLER null>",
+  "originalQuery": "<UÆNDRET bruger input>",
+  "portal": "${portalDomain}"
+}
+
+HUSK:
+- "query" = Efter stopwords, rolle-fjernelse, akronym-fjernelse
+- "detectedAcronym" = KUN hvis fundet i akronym-tabellen (se Trin 3), ellers null
+- "originalQuery" = Den ORIGINALE bruger-input UDEN nogen ændringer
+- "portal" = Portal domæne
+- Alle 4 parametre SKAL sendes HVER gang!
+
+Eksempel uden kategori:
 {
   "query": "Bevisbyrde § 72",
   "detectedAcronym": "MBL",
+  "originalQuery": "Bevisbyrde ved MBL § 72 og søgning",
   "portal": "${portalDomain}"
 }
 
-Med kategori (VIGTIGT: Send kategori-syntaks direkte i query):
+Eksempel med kategori:
 {
   "query": "PFAS-forurening, kategori: jordforureningsloven",
   "detectedAcronym": null,
+  "originalQuery": "PFAS-forurening, kategori: jordforureningsloven",
   "portal": "${portalDomain}"
 }
-
-Serveren håndterer parsing automatisk - du sender bare den rå query.
 
 ✅ KOMPLETTE EKSEMPLER
 
@@ -495,7 +511,12 @@ Input: "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis"
 2. Rens §: § 72 § 72-praksis → § 72 → "Bevisbyrde MBL § 72"
 3. Identificér: MBL → Miljøbeskyttelsesloven
 4. Fjern MBL: "Bevisbyrde § 72"
-5. Kald: {"query": "Bevisbyrde § 72", "detectedAcronym": "MBL"}
+5. Kald: {
+  "query": "Bevisbyrde § 72",
+  "detectedAcronym": "MBL",
+  "originalQuery": "Bevisbyrde ved MBL § 72 og søgning om § 72-praksis",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 2:
 Input: "Teknisk assistent – aldersvurdering af kulbrinteforurening"
@@ -504,7 +525,12 @@ Input: "Teknisk assistent – aldersvurdering af kulbrinteforurening"
 1. Fjern stopwords: af → "aldersvurdering kulbrinteforurening"
 2. Ingen §
 3. Intet akronym fundet
-4. Kald: {"query": "aldersvurdering kulbrinteforurening", "detectedAcronym": null}
+4. Kald: {
+  "query": "aldersvurdering kulbrinteforurening",
+  "detectedAcronym": null,
+  "originalQuery": "Teknisk assistent – aldersvurdering af kulbrinteforurening",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 3:
 Input: "Jurist – behov for støjregulering vindmøller"
@@ -513,7 +539,12 @@ Input: "Jurist – behov for støjregulering vindmøller"
 1. Ingen stopwords at fjerne
 2. Ingen §
 3. Intet akronym fundet
-4. Kald: {"query": "støjregulering vindmøller", "detectedAcronym": null}
+4. Kald: {
+  "query": "støjregulering vindmøller",
+  "detectedAcronym": null,
+  "originalQuery": "Jurist – behov for støjregulering vindmøller",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 4:
 Input: "praksis om NBL § 3 strandbeskyttelse"
@@ -522,7 +553,12 @@ Input: "praksis om NBL § 3 strandbeskyttelse"
 2. § allerede ren
 3. Identificér: NBL → Naturbeskyttelsesloven
 4. Fjern NBL: "§ 3 strandbeskyttelse"
-5. Kald: {"query": "§ 3 strandbeskyttelse", "detectedAcronym": "NBL"}
+5. Kald: {
+  "query": "§ 3 strandbeskyttelse",
+  "detectedAcronym": "NBL",
+  "originalQuery": "praksis om NBL § 3 strandbeskyttelse",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 5:
 Input: "støj fra vindmøller"
@@ -531,7 +567,12 @@ Input: "støj fra vindmøller"
 2. Ingen §
 3. Intet akronym fundet
 4. Ingen kategori
-5. Kald: {"query": "støj vindmøller", "detectedAcronym": null}
+5. Kald: {
+  "query": "støj vindmøller",
+  "detectedAcronym": null,
+  "originalQuery": "støj fra vindmøller",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 6:
 Input: "PFAS-forurening, kategori: jordforureningsloven"
@@ -540,7 +581,12 @@ Input: "PFAS-forurening, kategori: jordforureningsloven"
 2. Ingen §
 3. Identificér: PFAS → Intet match i akronym-tabel
 4. Kategori-syntaks fundet: BEHOLD i query (serveren parser den)
-5. Kald: {"query": "PFAS-forurening, kategori: jordforureningsloven", "detectedAcronym": null}
+5. Kald: {
+  "query": "PFAS-forurening, kategori: jordforureningsloven",
+  "detectedAcronym": null,
+  "originalQuery": "PFAS-forurening, kategori: jordforureningsloven",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
 Eksempel 7:
 Input: "bevisbyrde ved olieforurening, lovområde: JFL"
@@ -549,18 +595,35 @@ Input: "bevisbyrde ved olieforurening, lovområde: JFL"
 2. Ingen §
 3. Intet akronym fundet (JFL er del af kategori-syntaks, ikke query)
 4. Kategori-syntaks fundet: BEHOLD i query (serveren parser "JFL" automatisk)
-5. Kald: {"query": "bevisbyrde olieforurening, lovområde: JFL", "detectedAcronym": null}
+5. Kald: {
+  "query": "bevisbyrde olieforurening, lovområde: JFL",
+  "detectedAcronym": null,
+  "originalQuery": "bevisbyrde ved olieforurening, lovområde: JFL",
+  "portal": "mfkn.naevneneshus.dk"
+}
 
-⚠️ VIGTIGE REGLER
+⚠️ VIGTIGSTE REGLER (TJEK ALTID!)
 
+🔴 OBLIGATORISK - Glem ALDRIG disse:
+✅ ALTID send "originalQuery" med UÆNDRET bruger-input
+✅ ALTID send "detectedAcronym" hvis fundet i akronym-tabel (Trin 3)
+✅ ALTID send alle 4 parametre: query, detectedAcronym, originalQuery, portal
+✅ Hvis INTET akronym findes, send detectedAcronym: null (IKKE undefined, IKKE udelad parameteren)
+
+🟡 Query Optimering:
 - FØRST: Analysér om query starter med rollebeskrivelse (HVEM) - fjern dette, behold kun emnet (HVAD)
 - Brug din sprogforståelse: Er det en profession/rolle eller en del af søgeemnet?
-- Hvis INTET akronym findes, send detectedAcronym: null
 - Fjern ALTID akronymet fra query hvis fundet
 - Hvis kategori specificeres med "kategori:" eller "lovområde:", BEHOLD syntaksen i query - serveren parser den
 - Behold § henvisninger i query
+
+🟢 Paginering:
 - Brug "page_size" 5, medmindre andet ønskes
 - Sæt "page" hvis brugeren beder om næste side
+
+❌ GLEM ALDRIG:
+- originalQuery parameter (viser i monitoring dashboard)
+- detectedAcronym parameter (aktiverer kategori-filter)
 
 📊 PRÆSENTATION AF RESULTATER
 
