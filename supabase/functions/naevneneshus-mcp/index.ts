@@ -359,24 +359,34 @@ async function searchPortal(request: SearchRequest) {
     }
 
     let categoryInfo = null;
+    let categoryMatches: Array<{ id: string; title: string }> = [];
     let aiMissedAcronym = false;
 
     if (!detectedCategory && aiDetectedAcronym) {
       console.log(`Attempting to match acronym: ${aiDetectedAcronym}`);
       console.log(`Available categories: ${categories.length}`);
 
-      categoryInfo = await matchAcronymToCategory(categories, aiDetectedAcronym);
+      categoryMatches = await matchAcronymToCategories(categories, aiDetectedAcronym);
 
-      if (!categoryInfo) {
+      if (categoryMatches.length === 0) {
         console.warn(`Failed to match acronym "${aiDetectedAcronym}" to any category`);
         console.log(`Available category aliases:`, categories.map(c => ({ title: c.category_title, aliases: c.aliases })));
         await logUnknownAcronym(supabase, portal, aiDetectedAcronym, finalQueryForSearch);
-      } else {
-        console.log(`Successfully matched "${aiDetectedAcronym}" to category: ${categoryInfo.title}`);
+      } else if (categoryMatches.length === 1) {
+        console.log(`Successfully matched "${aiDetectedAcronym}" to category: ${categoryMatches[0].title}`);
+        categoryInfo = categoryMatches[0];
         detectedCategory = {
-          id: categoryInfo.id,
-          title: categoryInfo.title,
+          id: categoryMatches[0].id,
+          title: categoryMatches[0].title,
           source: 'ai_acronym',
+          matched_value: aiDetectedAcronym,
+        };
+      } else {
+        console.log(`Successfully matched "${aiDetectedAcronym}" to ${categoryMatches.length} categories: ${categoryMatches.map(c => c.title).join(', ')}`);
+        categoryInfo = categoryMatches[0]; // For backward compatibility with optimize query
+        detectedCategory = {
+          categories: categoryMatches,
+          source: 'ai_acronym_multi',
           matched_value: aiDetectedAcronym,
         };
       }
@@ -430,7 +440,15 @@ async function searchPortal(request: SearchRequest) {
       finalQuery = await optimizeQuery(categories, finalQueryForSearch);
     }
 
-    const searchPayload = buildSearchPayload(finalQuery, page, pageSize, mergedFilters, aiDetectedAcronym);
+    // Pass detected categories to buildSearchPayload
+    const searchPayload = buildSearchPayload(
+      finalQuery,
+      page,
+      pageSize,
+      mergedFilters,
+      aiDetectedAcronym,
+      categoryMatches.length > 0 ? categoryMatches : undefined
+    );
     const searchUrl = `https://${portal}/api/Search`;
 
     console.log('Calling search API:', searchUrl);
@@ -753,14 +771,31 @@ function generateAliases(title: string): string[] {
   return [...new Set(aliases)];
 }
 
-function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any, detectedAcronym?: string) {
+function buildSearchPayload(
+  query: string,
+  page: number,
+  pageSize: number,
+  filters?: any,
+  detectedAcronym?: string,
+  detectedCategories?: Array<{id: string, title: string}>
+) {
   // Build categories array for API
   const categories: Array<{id: string, title: string}> = [];
+
+  // Add detected categories (multiple for NBL, MBL, etc.)
+  if (detectedCategories && detectedCategories.length > 0) {
+    categories.push(...detectedCategories);
+  }
+
+  // Add filter category if provided (and not already in detected categories)
   if (filters?.category && filters?.categoryTitle) {
-    categories.push({
-      id: filters.category,
-      title: filters.categoryTitle
-    });
+    const alreadyAdded = categories.some(c => c.id === filters.category);
+    if (!alreadyAdded) {
+      categories.push({
+        id: filters.category,
+        title: filters.categoryTitle
+      });
+    }
   }
 
   // Calculate skip from page number
@@ -1098,13 +1133,14 @@ async function logAcronyms(supabase: any, portal: string, acronyms: Array<{ acro
   }
 }
 
-async function matchAcronymToCategory(
+async function matchAcronymToCategories(
   categories: PortalCategory[],
   acronym: string
-): Promise<{ id: string; title: string } | null> {
-  if (!acronym) return null;
+): Promise<Array<{ id: string; title: string }>> {
+  if (!acronym) return [];
 
   const normalizedAcronym = acronym.toUpperCase().trim();
+  const matches: Array<{ id: string; title: string }> = [];
 
   for (const category of categories) {
     const aliases = category.aliases || [];
@@ -1113,14 +1149,14 @@ async function matchAcronymToCategory(
     );
 
     if (match) {
-      return {
+      matches.push({
         id: category.category_id,
         title: category.category_title
-      };
+      });
     }
   }
 
-  return null;
+  return matches;
 }
 
 async function logUnknownAcronym(

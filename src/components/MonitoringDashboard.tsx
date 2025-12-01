@@ -473,15 +473,39 @@ export function MonitoringDashboard() {
                               Portal: <span className="font-mono text-xs">{log.portal}</span>
                             </div>
                             {log.raw_request?.detected_category && (
-                              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
-                                <span className="font-semibold text-emerald-700">📂 Kategori:</span>
-                                <span className="text-emerald-800">{log.raw_request.detected_category.title}</span>
-                                <span className="text-emerald-600">
-                                  ({log.raw_request.detected_category.source === 'explicit_syntax' ? 'parsed fra query' :
-                                    log.raw_request.detected_category.source === 'ai_acronym' ? 'AI detekteret' :
-                                    log.raw_request.detected_category.source === 'server_detected' ? 'server detekteret' :
-                                    'filter parameter'})
-                                </span>
+                              <div className="mt-2">
+                                {log.raw_request.detected_category.categories && log.raw_request.detected_category.categories.length > 0 ? (
+                                  <div className="space-y-1">
+                                    <div className="text-xs font-semibold text-emerald-700 mb-1">
+                                      📂 Kategorier ({log.raw_request.detected_category.categories.length}):
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {log.raw_request.detected_category.categories.map((cat: any, idx: number) => (
+                                        <span key={idx} className="inline-flex items-center px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-800">
+                                          {cat.title}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="text-xs text-emerald-600 mt-1">
+                                      ({log.raw_request.detected_category.source === 'ai_acronym_multi' ? `detected from ${log.raw_request.detected_category.matched_value}` :
+                                        log.raw_request.detected_category.source === 'explicit_syntax' ? 'parsed fra query' :
+                                        log.raw_request.detected_category.source === 'ai_acronym' ? 'AI detekteret' :
+                                        log.raw_request.detected_category.source === 'server_detected' ? 'server detekteret' :
+                                        'filter parameter'})
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-md text-xs">
+                                    <span className="font-semibold text-emerald-700">📂 Kategori:</span>
+                                    <span className="text-emerald-800">{log.raw_request.detected_category.title}</span>
+                                    <span className="text-emerald-600">
+                                      ({log.raw_request.detected_category.source === 'explicit_syntax' ? 'parsed fra query' :
+                                        log.raw_request.detected_category.source === 'ai_acronym' ? 'AI detekteret' :
+                                        log.raw_request.detected_category.source === 'server_detected' ? 'server detekteret' :
+                                        'filter parameter'})
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
