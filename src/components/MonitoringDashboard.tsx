@@ -487,7 +487,8 @@ export function MonitoringDashboard() {
                                       ))}
                                     </div>
                                     <div className="text-xs text-emerald-600 mt-1">
-                                      ({log.raw_request.detected_category.source === 'ai_acronym_multi' ? `detected from ${log.raw_request.detected_category.matched_value}` :
+                                      ({log.raw_request.detected_category.source === 'ai_acronym_multi' ? `AI detected from ${log.raw_request.detected_category.matched_value}` :
+                                        log.raw_request.detected_category.source === 'server_detected_multi' ? `Server detected from ${log.raw_request.detected_category.matched_value}` :
                                         log.raw_request.detected_category.source === 'explicit_syntax' ? 'parsed fra query' :
                                         log.raw_request.detected_category.source === 'ai_acronym' ? 'AI detekteret' :
                                         log.raw_request.detected_category.source === 'server_detected' ? 'server detekteret' :

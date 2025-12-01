@@ -393,15 +393,30 @@ async function searchPortal(request: SearchRequest) {
     }
 
     if (!detectedCategory) {
-      categoryInfo = await detectCategoryFromQuery(categories, finalQueryForSearch);
-      if (categoryInfo && !aiDetectedAcronym) {
+      const serverDetectedCategories = await detectCategoriesFromQuery(categories, finalQueryForSearch);
+      if (serverDetectedCategories.length > 0 && !aiDetectedAcronym) {
         aiMissedAcronym = true;
-        detectedCategory = {
-          id: categoryInfo.id,
-          title: categoryInfo.title,
-          source: 'server_detected',
-          matched_value: 'auto-detected',
-        };
+
+        if (serverDetectedCategories.length === 1) {
+          // Single category detected by server
+          categoryInfo = serverDetectedCategories[0];
+          detectedCategory = {
+            id: serverDetectedCategories[0].id,
+            title: serverDetectedCategories[0].title,
+            source: 'server_detected',
+            matched_value: serverDetectedCategories[0].matchedAlias,
+          };
+        } else {
+          // Multiple categories detected by server (NBL case when AI forgets to send acronym!)
+          console.log(`Server detected ${serverDetectedCategories.length} categories from query: ${serverDetectedCategories.map(c => c.title).join(', ')}`);
+          categoryInfo = serverDetectedCategories[0]; // For backward compatibility with optimize query
+          categoryMatches = serverDetectedCategories; // Store for buildSearchPayload
+          detectedCategory = {
+            categories: serverDetectedCategories,
+            source: 'server_detected_multi',
+            matched_value: serverDetectedCategories[0].matchedAlias,
+          };
+        }
       }
     }
 
@@ -928,10 +943,14 @@ async function resolveCategoryFromFilter(categories: PortalCategory[], categoryV
   }
 }
 
-async function detectCategoryFromQuery(categories: PortalCategory[], query: string): Promise<{ id: string; title: string } | null> {
+async function detectCategoriesFromQuery(
+  categories: PortalCategory[],
+  query: string
+): Promise<Array<{ id: string; title: string; matchedAlias: string }>> {
   try {
-    if (!categories || categories.length === 0) return null;
+    if (!categories || categories.length === 0) return [];
 
+    const matches: Array<{ id: string; title: string; matchedAlias: string }> = [];
     const queryLower = query.toLowerCase();
     const queryUpper = query.toUpperCase();
     const queryWords = query.split(/\s+/);
@@ -951,18 +970,20 @@ async function detectCategoryFromQuery(categories: PortalCategory[], query: stri
 
         if (isAcronymMatch || isFullNameMatch) {
           console.log(`Detected category: ${category.category_title} (matched: "${alias}") -> ${category.category_id}`);
-          return {
+          matches.push({
             id: category.category_id,
-            title: category.category_title
-          };
+            title: category.category_title,
+            matchedAlias: alias
+          });
+          break; // Only one match per category
         }
       }
     }
 
-    return null;
+    return matches;
   } catch (error) {
-    console.error('Failed to detect category:', error);
-    return null;
+    console.error('Failed to detect categories:', error);
+    return [];
   }
 }
 
