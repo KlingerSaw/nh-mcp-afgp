@@ -754,32 +754,37 @@ function generateAliases(title: string): string[] {
 }
 
 function buildSearchPayload(query: string, page: number, pageSize: number, filters?: any, detectedAcronym?: string) {
-  const normalizedFilters: any = {};
-
-  if (filters?.dateRange?.start || filters?.dateRange?.end) {
-    normalizedFilters.dateRange = {
-      start: filters?.dateRange?.start,
-      end: filters?.dateRange?.end,
-    };
+  // Build categories array for API
+  const categories: Array<{id: string, title: string}> = [];
+  if (filters?.category && filters?.categoryTitle) {
+    categories.push({
+      id: filters.category,
+      title: filters.categoryTitle
+    });
   }
 
-  if (filters?.category) {
-    normalizedFilters.category = filters.category;
-  }
+  // Calculate skip from page number
+  const skip = (page - 1) * pageSize;
 
-  if (filters?.categoryTitle) {
-    normalizedFilters.categoryTitle = filters.categoryTitle;
-  }
-
+  // Build payload matching the portal API format
   const payload: any = {
     query,
-    ...(Object.keys(normalizedFilters).length > 0 ? { filters: normalizedFilters } : {}),
-    pagination: {
-      page,
-      pageSize,
-    },
+    categories,
+    sort: "Score",
+    types: [],
+    skip,
+    size: pageSize,
   };
 
+  // Add date range if provided
+  if (filters?.dateRange?.start) {
+    payload.from = filters.dateRange.start;
+  }
+  if (filters?.dateRange?.end) {
+    payload.to = filters.dateRange.end;
+  }
+
+  // Add detectedAcronym if provided (for our internal tracking)
   if (detectedAcronym) {
     payload.detectedAcronym = detectedAcronym;
   }
